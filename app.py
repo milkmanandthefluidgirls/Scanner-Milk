@@ -2,7 +2,23 @@ import datetime as dt
 import pandas as pd
 import streamlit as st
 from model import player_forecasts, score
-from sources import nba_schedule, nba_player_logs, kalshi_markets, kalshi_orderbook, extract_best_asks, nba_three_point_candidates
+from sources import nba_schedule, nba_player_logs, kalshi_markets, kalshi_orderbook, extract_best_asks
+
+
+def nba_three_point_candidates(markets):
+    """Candidate discovery only; never an automatically verified contract match."""
+    if markets is None or markets.empty:
+        return pd.DataFrame()
+    fields=[c for c in ('ticker','title','subtitle','yes_sub_title','no_sub_title',
+                       'rules_primary','rules_secondary','event_ticker','series_ticker')
+            if c in markets.columns]
+    if not fields:
+        return pd.DataFrame()
+    hay=markets[fields].fillna('').astype(str).agg(' '.join,axis=1)
+    nba=hay.str.contains(r'\bNBA\b|KXNBA|basketball',case=False,regex=True)
+    threes=hay.str.contains(r'3[- ]?point|3pt|three[- ]?point|three[- ]?pointer|3PM|made threes',
+                            case=False,regex=True)
+    return markets.loc[nba & threes].copy()
 
 st.set_page_config(page_title="NBA 3PT Edge Scanner",page_icon="🏀",layout="wide")
 st.title("🏀 NBA 3PT Edge Scanner")
