@@ -1,4 +1,6 @@
 import datetime as dt
+import json
+from pathlib import Path
 import pandas as pd
 import streamlit as st
 from model import player_forecasts, score
@@ -128,47 +130,56 @@ try:
 except Exception as e:
     st.warning(f"Schedule feed unavailable: {e}")
 
-st.subheader("NBA player statistics — ESPN")
-st.caption("Free, unofficial ESPN NBA box scores. Recent completed regular-season games only; NOT a full-season history. Refreshes at most every six hours unless cache is cleared.")
-days=st.select_slider("Recent days of completed games",options=[7,14,21,28],value=14,key="espn_days")
-st.caption("Longer windows request more game box scores and can take several minutes on Streamlit Cloud.")
-if st.button("Load / refresh ESPN three-point logs",key="load_espn"):
-    st.session_state["espn_requested"]=True
-    st.session_state.pop("espn_result",None)
+st.subheader("2026–27 NBA regular-season player statistics")
+st.caption("Current season ONLY. Saved game logs are updated by GitHub Actions and persist across dashboard restarts.")
 logs=None
-if st.session_state.get("espn_requested"):
+saved_path=Path("data/nba_2026_27_regular_season_3pt.csv")
+manifest_path=Path("data/nba_2026_27_manifest.json")
+if saved_path.exists():
     try:
-        with st.spinner("Collecting ESPN game box scores; please keep this page open..."):
-            result=get_espn_logs(days,dt.datetime.now(dt.timezone(dt.timedelta(hours=-5))).date().isoformat())
-            st.session_state["espn_result"]=result
-        logs,diagnostics=st.session_state["espn_result"]
-        st.success(f"ESPN: {diagnostics['rows']} player-game rows from {diagnostics['games_parsed']} completed games.")
-        st.dataframe(pd.DataFrame([{k:v for k,v in diagnostics.items() if k!="errors"}]),hide_index=True,use_container_width=True)
-        if not diagnostics["complete"]:
-            st.warning("PARTIAL DATA: some days/games failed or the game cap was reached. Hit rates and forecasts can be biased.")
-            with st.expander("ESPN request errors"):
-                st.write(diagnostics["errors"])
-        if not logs.empty:
-            preview=logs[["PLAYER_NAME","TEAM_ABBREVIATION","GAME_DATE","FG3M","FG3A","MIN"]].sort_values("GAME_DATE",ascending=False)
-            st.dataframe(preview.head(80),hide_index=True,use_container_width=True)
-            st.download_button("Download ESPN player logs CSV",logs.to_csv(index=False),"espn_nba_3pt_logs.csv",key="download_espn")
-    except (ESPNFeedError,Exception) as exc:
-        st.error(f"ESPN feed unavailable: {type(exc).__name__}: {exc}")
-        st.session_state["espn_requested"]=False
-st.caption("Fallback: upload a verified NBA.com-style CSV if ESPN blocks cloud access.")
-upload=st.file_uploader("Player logs CSV: PLAYER_ID, PLAYER_NAME, TEAM_ABBREVIATION, GAME_DATE, FG3M, FG3A",type="csv")
-if upload is not None:
-    try:
-        uploaded_logs=pd.read_csv(upload)
+        saved=pd.read_csv(saved_path,dtype={"PLAYER_ID":str,"GAME_ID":str})
         required={"PLAYER_ID","PLAYER_NAME","TEAM_ABBREVIATION","GAME_DATE","FG3M","FG3A"}
-        if not required.issubset(uploaded_logs.columns):
-            raise ValueError("Missing columns: "+", ".join(sorted(required-set(uploaded_logs.columns))))
-        logs=uploaded_logs
-        st.info("Using uploaded CSV in place of ESPN logs.")
+        if not required.issubset(saved.columns):
+            raise ValueError("Saved season file is missing required columns")
+        saved["GAME_DATE"]=pd.to_datetime(saved["GAME_DATE"],errors="coerce")
+        saved=saved[saved["GAME_DATE"].between(pd.Timestamp("2026-10-01"),pd.Timestamp("2027-04-30"))]
+        saved["GAME_DATE"]=saved["GAME_DATE"].dt.strftime("%Y-%m-%d")
+        if not saved.empty:
+            logs=saved
+            st.success(f"Saved current-season data: {len(saved):,} player-game records across {saved.GAME_ID.nunique() if 'GAME_ID' in saved else '?'} games.")
+        if manifest_path.exists():
+            manifest=json.loads(manifest_path.read_text())
+            st.caption(f"Last collection: {manifest.get('last_checked','unknown')} · Latest stored date: {saved.GAME_DATE.max() if not saved.empty else 'none'}")
+            if not manifest.get("complete",False):
+                st.warning("Historical collection was incomplete. GitHub Actions will retry missing games; forecasts may be biased.")
+                with st.expander("Collection diagnostics"):
+                    st.json({k:v for k,v in manifest.items() if k!="completed_game_ids"})
     except Exception as exc:
-        st.error(f"CSV error: {exc}")
+        st.error(f"Stored stats could not be loaded: {exc}")
+if logs is None:
+    st.info("No saved current-season dataset yet. In GitHub, open Actions → Update current-season NBA three-point stats → Run workflow. Wait for the first backfill to finish and Streamlit to redeploy.")
+with st.expander("Optional manual ESPN fallback (current season only)"):
+    days=st.select_slider("Recent days",options=[7,14,21,28],value=14,key="espn_days")
+    if st.button("Load recent ESPN logs",key="load_espn"):
+        st.session_state["espn_requested"]=True
+    if st.session_state.get("espn_requested"):
+        try:
+            with st.spinner("Collecting recent ESPN games..."):
+                recent,diagnostics=get_espn_logs(days,dt.datetime.now(dt.timezone(dt.timedelta(hours=-5))).date().isoformat())
+            recent["GAME_DATE"]=pd.to_datetime(recent["GAME_DATE"],errors="coerce")
+            recent=recent[recent["GAME_DATE"].between(pd.Timestamp("2026-10-01"),pd.Timestamp("2027-04-30"))]
+            recent["GAME_DATE"]=recent["GAME_DATE"].dt.strftime("%Y-%m-%d")
+            if logs is None and not recent.empty:
+                logs=recent
+                st.warning("Using recent-only fallback, not complete historical season data.")
+            st.dataframe(recent.head(80),hide_index=True,use_container_width=True)
+            st.download_button("Download recent logs",recent.to_csv(index=False),"espn_recent_3pt.csv")
+            if not diagnostics["complete"]:
+                st.warning("Recent ESPN fetch incomplete.")
+        except Exception as exc:
+            st.error(f"ESPN fallback unavailable: {exc}")
 if logs is None or logs.empty:
-    st.info("Player forecasts need game logs. Tap Load / refresh ESPN three-point logs or upload a CSV.")
+    st.info("Player forecasts need current-season game logs. Run the GitHub Actions historical collector or use the recent ESPN fallback.")
     show_targeted_markets()
     st.subheader("Kalshi public market catalog")
     if st.button("Fetch Kalshi markets"):
@@ -198,7 +209,7 @@ if forecasts.empty:
     st.warning("No qualifying player logs.")
     st.stop()
 st.subheader("Independent player forecasts")
-st.caption("65% available sample + 35% last-five attempts; shooting accuracy shrunk toward 36%; Poisson makes. ESPN history is limited to the selected recent-day window, NOT the full season. No injury, minutes or opponent adjustment yet.")
+st.caption("Current 2026–27 regular-season data only. 65% season + 35% last-five attempts; shooting accuracy shrunk toward 36%; uncalibrated Poisson makes. No injury, minutes or opponent adjustment yet.")
 st.dataframe(forecasts,hide_index=True,use_container_width=True)
 
 show_targeted_markets()
