@@ -2,7 +2,7 @@ import datetime as dt
 import pandas as pd
 import streamlit as st
 from model import player_forecasts, score
-from sources import nba_schedule, nba_player_logs, kalshi_markets, kalshi_orderbook, extract_best_asks, kalshi_nba_three_point_markets
+from sources import nba_schedule, nba_player_logs, kalshi_markets, kalshi_orderbook, extract_best_asks
 
 
 def nba_three_point_candidates(markets):
@@ -39,6 +39,45 @@ def get_schedule(): return nba_schedule()
 @st.cache_data(ttl=300)
 def get_markets(): return kalshi_markets()
 
+
+
+def kalshi_nba_three_point_markets():
+    """Direct series queries, isolated from the general catalog import."""
+    import requests
+    base="https://api.elections.kalshi.com/trade-api/v2"
+    series=("KXNBA3PT","KXNBAESCALATOR3PT","KXNBA3PTPROT")
+    rows=[]
+    diagnostics=[]
+    for ticker in series:
+        cursor=None
+        count=0
+        pages=0
+        error=""
+        for _ in range(8):
+            params={"series_ticker":ticker,"status":"open","limit":200}
+            if cursor:
+                params["cursor"]=cursor
+            try:
+                response=requests.get(base+"/markets",params=params,timeout=12)
+                response.raise_for_status()
+                payload=response.json()
+            except Exception as exc:
+                error=str(exc)
+                break
+            batch=payload.get("markets",[])
+            rows.extend(batch)
+            count+=len(batch)
+            pages+=1
+            next_cursor=payload.get("cursor")
+            if not next_cursor or next_cursor==cursor:
+                break
+            cursor=next_cursor
+        diagnostics.append({"series":ticker,"markets_found":count,"pages":pages,
+                            "status":"ERROR" if error else "OK","detail":error})
+    markets=pd.DataFrame(rows)
+    if not markets.empty and "ticker" in markets.columns:
+        markets=markets.drop_duplicates("ticker")
+    return markets,pd.DataFrame(diagnostics)
 
 @st.cache_data(ttl=180)
 def get_targeted_markets():
