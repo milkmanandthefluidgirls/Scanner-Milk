@@ -81,7 +81,7 @@ def _parse_boxscore(payload, game_id, game_date):
                             "FG3M":made,"FG3A":attempts,"MIN":minutes,"GAME_ID":str(game_id)})
     return out
 
-def fetch_espn_logs(days=14, today=None, max_games=110):
+def fetch_espn_logs(days=14, today=None, max_games=320):
     """Fetch recent completed NBA box scores. No look-ahead; returns logs and diagnostics.
 
     A window of days is NOT a full season. ESPN can block cloud requests.
@@ -112,7 +112,7 @@ def fetch_espn_logs(days=14, today=None, max_games=110):
         time.sleep(0.08)
     rows=[]
     attempted=0
-    for game_id,game_date in list(games.items())[:max_games]:
+    for game_id,game_date in sorted(games.items(),key=lambda pair:pair[1],reverse=True)[:max_games]:
         attempted+=1
         try:
             payload=_json(session,"summary",{"event":game_id})
@@ -133,6 +133,9 @@ def fetch_espn_logs(days=14, today=None, max_games=110):
           "games_failed":len(failed_games),
           "players":int(df.PLAYER_ID.nunique()) if not df.empty else 0,
           "rows":len(df),
+          "latest_game_date":str(df.GAME_DATE.max()) if not df.empty else None,
+          "earliest_game_date":str(df.GAME_DATE.min()) if not df.empty else None,
+          "games_skipped_by_cap":max(0,len(games)-max_games),
           "complete":not failed_dates and not failed_games and len(games)<=max_games,
           "errors":(failed_dates+failed_games)[:12]}
     if df.empty:
