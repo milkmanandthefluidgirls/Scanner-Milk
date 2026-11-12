@@ -1,0 +1,45 @@
+name: Update current-season NBA three-point stats
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 12 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nba-season-stats
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install pandas requests
+      - name: Fetch missing completed 2026-27 regular-season boxscores
+        id: collect
+        continue-on-error: true
+        run: python collect_season.py
+      - name: Save successful results even after partial failures
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/nba_2026_27_regular_season_3pt.csv data/nba_2026_27_manifest.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update 2026-27 regular-season ESPN game logs"
+            git push
+          fi
+      - name: Report collection errors
+        if: steps.collect.outcome == 'failure'
+        run: |
+          echo "Collection incomplete. Successful data was saved; rerun to retry missing games."
+          exit 1
