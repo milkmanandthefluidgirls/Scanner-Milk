@@ -15,7 +15,7 @@ def player_forecasts(logs, min_games=5, prior_attempts=70, prior_pct=.36):
         makes=g.FG3M.sum(); total=g.FG3A.sum()
         pct=(makes+prior_attempts*prior_pct)/(total+prior_attempts) if total+prior_attempts else prior_pct
         lam=attempts*pct
-        for threshold in (1,2,3):
+        for threshold in (1,2,3,4):
             fair=poisson_tail(lam,threshold)
             out.append(dict(player=str(g.PLAYER_NAME.iloc[0]),team=str(g.TEAM_ABBREVIATION.iloc[0]),
                 player_id=int(pid),threshold=threshold,games=len(g),
