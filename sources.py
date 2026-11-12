@@ -59,3 +59,33 @@ def nba_three_point_candidates(markets):
     nba=hay.str.contains(r'\bNBA\b|KXNBA|basketball',case=False,regex=True)
     threes=hay.str.contains(r'3[- ]?point|3pt|three[- ]?point|three[- ]?pointer|3PM|made threes',case=False,regex=True)
     return markets.loc[nba & threes].copy()
+
+NBA_3PT_SERIES = ("KXNBA3PT", "KXNBAESCALATOR3PT", "KXNBA3PTPROT")
+
+def kalshi_nba_three_point_markets(series_tickers=NBA_3PT_SERIES, max_pages_per_series=8):
+    """Target known NBA 3PT series directly. Returns (markets, diagnostics)."""
+    session=requests.Session()
+    rows=[]; diagnostics=[]
+    for series in series_tickers:
+        cursor=None; count=0; pages=0; problem=""
+        try:
+            for _ in range(max_pages_per_series):
+                params={"series_ticker":series,"status":"open","limit":200,"mve_filter":"exclude"}
+                if cursor: params["cursor"]=cursor
+                response=session.get(BASE+"/markets",params=params,timeout=15)
+                response.raise_for_status()
+                payload=response.json()
+                page=payload.get("markets",[])
+                rows.extend(page);count+=len(page);pages+=1
+                new_cursor=payload.get("cursor")
+                if not new_cursor or new_cursor==cursor: break
+                cursor=new_cursor
+        except requests.RequestException as exc:
+            problem=str(exc)
+        diagnostics.append({"series":series,"markets_found":count,"pages":pages,
+                            "status":"ERROR" if problem else ("TRUNCATED" if cursor and pages>=max_pages_per_series else "OK"),
+                            "detail":problem})
+    markets=pd.DataFrame(rows)
+    if not markets.empty and "ticker" in markets.columns:
+        markets=markets.drop_duplicates("ticker")
+    return markets,pd.DataFrame(diagnostics)
