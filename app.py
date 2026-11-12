@@ -45,7 +45,7 @@ def kalshi_nba_three_point_markets():
     """Direct series queries, isolated from the general catalog import."""
     import requests
     base="https://api.elections.kalshi.com/trade-api/v2"
-    series=("KXNBA3PT","KXNBAESCALATOR3PT","KXNBA3PTPROT")
+    series=("KXNBA3PT",)
     rows=[]
     diagnostics=[]
     for ticker in series:
@@ -85,7 +85,7 @@ def get_targeted_markets():
 
 def show_targeted_markets():
     st.subheader("Targeted NBA three-point markets")
-    st.caption("Queries three known NBA three-pointer series directly; not combo RFQ markets.")
+    st.caption("Standard NBA 3PT contracts only (KXNBA3PT). No escalator, protection, or combo RFQ markets.")
     if st.button("Scan NBA 3PT series",key="scan_targeted"):
         try:
             with st.spinner("Querying NBA 3PT series..."):
@@ -100,11 +100,9 @@ def show_targeted_markets():
             st.info("No open markets found in these series, or the API reported an error. See diagnostics above.")
         else:
             st.caption("Prices below are public API snapshots, not executable combo RFQ quotes. Empty prices mean no available quote.")
-            series=st.selectbox("Contract series",["Standard 3PT","Escalator 3PT","3PT protection","All"],key="targeted_series")
-            mapping={"Standard 3PT":"KXNBA3PT","Escalator 3PT":"KXNBAESCALATOR3PT","3PT protection":"KXNBA3PTPROT"}
             display=markets.copy()
-            if series!="All" and "series_ticker" in display.columns:
-                display=display[display["series_ticker"]==mapping[series]]
+            if "series_ticker" in display.columns:
+                display=display[display["series_ticker"]=="KXNBA3PT"]
             player_query=st.text_input("Search player",placeholder="e.g. Jaylen Clark",key="targeted_player")
             if player_query and "title" in display.columns:
                 display=display[display["title"].fillna("").str.contains(player_query,case=False,regex=False)]
