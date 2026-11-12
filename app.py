@@ -2,6 +2,7 @@ import datetime as dt
 import pandas as pd
 import streamlit as st
 from model import player_forecasts, score
+from espn_stats import fetch_espn_logs, ESPNFeedError
 from sources import nba_schedule, nba_player_logs, kalshi_markets, kalshi_orderbook, extract_best_asks
 
 
@@ -31,6 +32,10 @@ with st.sidebar:
     if st.button("Clear cache"):
         st.cache_data.clear()
         st.rerun()
+
+@st.cache_data(ttl=21600,show_spinner=False)
+def get_espn_logs(days,as_of):
+    return fetch_espn_logs(days=days,today=as_of)
 
 @st.cache_data(ttl=900)
 def get_logs(s): return nba_player_logs(s)
@@ -123,27 +128,47 @@ try:
 except Exception as e:
     st.warning(f"Schedule feed unavailable: {e}")
 
-st.subheader("Data feeds")
-st.caption("NBA.com often blocks cloud-hosted statistics requests. The dashboard will not contact that endpoint until you request it.")
-upload=st.file_uploader("Player logs CSV (optional): PLAYER_ID, PLAYER_NAME, TEAM_ABBREVIATION, GAME_DATE, FG3M, FG3A",type="csv")
+st.subheader("NBA player statistics — ESPN")
+st.caption("Free, unofficial ESPN NBA box scores. Recent completed regular-season games only; NOT a full-season history. Refreshes at most every six hours unless cache is cleared.")
+days=st.select_slider("Recent days of completed games",options=[7,14,21,28],value=14,key="espn_days")
+st.caption("Longer windows request more game box scores and can take several minutes on Streamlit Cloud.")
+if st.button("Load / refresh ESPN three-point logs",key="load_espn"):
+    st.session_state["espn_requested"]=True
+    st.session_state.pop("espn_result",None)
 logs=None
+if st.session_state.get("espn_requested"):
+    try:
+        with st.spinner("Collecting ESPN game box scores; please keep this page open..."):
+            result=get_espn_logs(days,dt.datetime.now(dt.timezone(dt.timedelta(hours=-5))).date().isoformat())
+            st.session_state["espn_result"]=result
+        logs,diagnostics=st.session_state["espn_result"]
+        st.success(f"ESPN: {diagnostics['rows']} player-game rows from {diagnostics['games_parsed']} completed games.")
+        st.dataframe(pd.DataFrame([{k:v for k,v in diagnostics.items() if k!="errors"}]),hide_index=True,use_container_width=True)
+        if not diagnostics["complete"]:
+            st.warning("PARTIAL DATA: some days/games failed or the game cap was reached. Hit rates and forecasts can be biased.")
+            with st.expander("ESPN request errors"):
+                st.write(diagnostics["errors"])
+        if not logs.empty:
+            preview=logs[["PLAYER_NAME","TEAM_ABBREVIATION","GAME_DATE","FG3M","FG3A","MIN"]].sort_values("GAME_DATE",ascending=False)
+            st.dataframe(preview.head(80),hide_index=True,use_container_width=True)
+            st.download_button("Download ESPN player logs CSV",logs.to_csv(index=False),"espn_nba_3pt_logs.csv",key="download_espn")
+    except (ESPNFeedError,Exception) as exc:
+        st.error(f"ESPN feed unavailable: {type(exc).__name__}: {exc}")
+        st.session_state["espn_requested"]=False
+st.caption("Fallback: upload a verified NBA.com-style CSV if ESPN blocks cloud access.")
+upload=st.file_uploader("Player logs CSV: PLAYER_ID, PLAYER_NAME, TEAM_ABBREVIATION, GAME_DATE, FG3M, FG3A",type="csv")
 if upload is not None:
     try:
-        logs=pd.read_csv(upload)
-    except Exception as e:
-        st.error(f"CSV error: {e}")
-if st.button("Try NBA.com player stats (may be slow)"):
-    st.session_state["fetch_nba_logs"]=True
-if st.session_state.get("fetch_nba_logs",False) and logs is None:
-    try:
-        with st.spinner("Requesting NBA player logs (cloud connection may time out)..."):
-            logs=get_logs(season)
-        st.session_state["fetch_nba_logs"]=False
-    except Exception as e:
-        st.warning(f"NBA stats feed unavailable: {e}")
-        st.session_state["fetch_nba_logs"]=False
+        uploaded_logs=pd.read_csv(upload)
+        required={"PLAYER_ID","PLAYER_NAME","TEAM_ABBREVIATION","GAME_DATE","FG3M","FG3A"}
+        if not required.issubset(uploaded_logs.columns):
+            raise ValueError("Missing columns: "+", ".join(sorted(required-set(uploaded_logs.columns))))
+        logs=uploaded_logs
+        st.info("Using uploaded CSV in place of ESPN logs.")
+    except Exception as exc:
+        st.error(f"CSV error: {exc}")
 if logs is None or logs.empty:
-    st.info("Player forecasts need game logs. Upload a CSV or tap the NBA.com button.")
+    st.info("Player forecasts need game logs. Tap Load / refresh ESPN three-point logs or upload a CSV.")
     show_targeted_markets()
     st.subheader("Kalshi public market catalog")
     if st.button("Fetch Kalshi markets"):
