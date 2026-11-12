@@ -198,7 +198,7 @@ if forecasts.empty:
     st.warning("No qualifying player logs.")
     st.stop()
 st.subheader("Independent player forecasts")
-st.caption("65% season + 35% last-five attempts; shooting accuracy shrunk toward 36%; Poisson makes. No injury, minutes or opponent adjustment yet.")
+st.caption("65% available sample + 35% last-five attempts; shooting accuracy shrunk toward 36%; Poisson makes. ESPN history is limited to the selected recent-day window, NOT the full season. No injury, minutes or opponent adjustment yet.")
 st.dataframe(forecasts,hide_index=True,use_container_width=True)
 
 show_targeted_markets()
