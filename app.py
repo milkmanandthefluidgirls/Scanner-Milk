@@ -99,9 +99,23 @@ def show_targeted_markets():
         if markets.empty:
             st.info("No open markets found in these series, or the API reported an error. See diagnostics above.")
         else:
-            cols=[x for x in ("ticker","title","subtitle","yes_sub_title","status","yes_bid_dollars","yes_ask_dollars","no_bid_dollars","no_ask_dollars") if x in markets.columns]
-            st.dataframe(markets[cols].head(500),hide_index=True,use_container_width=True)
-            st.download_button("Download targeted NBA 3PT contracts",markets.to_csv(index=False),"kalshi_nba_3pt_markets.csv",key="download_targeted")
+            st.caption("Prices below are public API snapshots, not executable combo RFQ quotes. Empty prices mean no available quote.")
+            series=st.selectbox("Contract series",["Standard 3PT","Escalator 3PT","3PT protection","All"],key="targeted_series")
+            mapping={"Standard 3PT":"KXNBA3PT","Escalator 3PT":"KXNBAESCALATOR3PT","3PT protection":"KXNBA3PTPROT"}
+            display=markets.copy()
+            if series!="All" and "series_ticker" in display.columns:
+                display=display[display["series_ticker"]==mapping[series]]
+            player_query=st.text_input("Search player",placeholder="e.g. Jaylen Clark",key="targeted_player")
+            if player_query and "title" in display.columns:
+                display=display[display["title"].fillna("").str.contains(player_query,case=False,regex=False)]
+            if "title" in display.columns:
+                extracted=display["title"].fillna("").str.extract(r"(?P<player>.+?):\s*(?P<threshold>\d+)\+\s*threes",expand=True)
+                display["player"]=extracted["player"]
+                display["threshold"]=pd.to_numeric(extracted["threshold"],errors="coerce")
+            cols=[x for x in ("player","threshold","title","yes_bid_dollars","yes_ask_dollars","no_bid_dollars","no_ask_dollars","ticker","status") if x in display.columns]
+            st.metric("Matching contracts",len(display))
+            st.dataframe(display[cols].head(500),hide_index=True,use_container_width=True)
+            st.download_button("Download visible contracts",display.to_csv(index=False),"kalshi_nba_3pt_markets.csv",key="download_targeted")
 
 schedule=pd.DataFrame()
 try:
