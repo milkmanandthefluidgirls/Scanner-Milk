@@ -2,7 +2,7 @@ import datetime as dt
 import pandas as pd
 import streamlit as st
 from model import player_forecasts, score
-from sources import nba_schedule, nba_player_logs, kalshi_markets, kalshi_orderbook, extract_best_asks
+from sources import nba_schedule, nba_player_logs, kalshi_markets, kalshi_orderbook, extract_best_asks, kalshi_nba_three_point_markets
 
 
 def nba_three_point_candidates(markets):
@@ -39,6 +39,31 @@ def get_schedule(): return nba_schedule()
 @st.cache_data(ttl=300)
 def get_markets(): return kalshi_markets()
 
+
+@st.cache_data(ttl=180)
+def get_targeted_markets():
+    return kalshi_nba_three_point_markets()
+
+def show_targeted_markets():
+    st.subheader("Targeted NBA three-point markets")
+    st.caption("Queries three known NBA three-pointer series directly; not combo RFQ markets.")
+    if st.button("Scan NBA 3PT series",key="scan_targeted"):
+        try:
+            with st.spinner("Querying NBA 3PT series..."):
+                st.session_state["nba_3pt_scan"]=get_targeted_markets()
+        except Exception as exc:
+            st.error(f"Series scan failed: {exc}")
+    if "nba_3pt_scan" in st.session_state:
+        markets,diagnostics=st.session_state["nba_3pt_scan"]
+        st.metric("Targeted contracts found",len(markets))
+        st.dataframe(diagnostics,hide_index=True,use_container_width=True)
+        if markets.empty:
+            st.info("No open markets found in these series, or the API reported an error. See diagnostics above.")
+        else:
+            cols=[x for x in ("ticker","title","subtitle","yes_sub_title","status","yes_bid_dollars","yes_ask_dollars","no_bid_dollars","no_ask_dollars") if x in markets.columns]
+            st.dataframe(markets[cols].head(500),hide_index=True,use_container_width=True)
+            st.download_button("Download targeted NBA 3PT contracts",markets.to_csv(index=False),"kalshi_nba_3pt_markets.csv",key="download_targeted")
+
 schedule=pd.DataFrame()
 try:
     schedule=get_schedule()
@@ -68,6 +93,7 @@ if st.session_state.get("fetch_nba_logs",False) and logs is None:
         st.session_state["fetch_nba_logs"]=False
 if logs is None or logs.empty:
     st.info("Player forecasts need game logs. Upload a CSV or tap the NBA.com button.")
+    show_targeted_markets()
     st.subheader("Kalshi public market catalog")
     if st.button("Fetch Kalshi markets"):
         try: st.session_state["markets"]=get_markets()
@@ -99,6 +125,7 @@ st.subheader("Independent player forecasts")
 st.caption("65% season + 35% last-five attempts; shooting accuracy shrunk toward 36%; Poisson makes. No injury, minutes or opponent adjustment yet.")
 st.dataframe(forecasts,hide_index=True,use_container_width=True)
 
+show_targeted_markets()
 st.subheader("Public Kalshi market catalog")
 st.warning("Automatic player-to-contract matching is not enabled. Exact contract verification required.")
 if st.button("Fetch Kalshi markets"):
