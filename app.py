@@ -2,7 +2,7 @@ import datetime as dt
 import pandas as pd
 import streamlit as st
 from model import player_forecasts, score
-from sources import nba_schedule, nba_player_logs, kalshi_markets, kalshi_orderbook, extract_best_asks
+from sources import nba_schedule, nba_player_logs, kalshi_markets, kalshi_orderbook, extract_best_asks, nba_three_point_candidates
 
 st.set_page_config(page_title="NBA 3PT Edge Scanner",page_icon="🏀",layout="wide")
 st.title("🏀 NBA 3PT Edge Scanner")
@@ -58,10 +58,16 @@ if logs is None or logs.empty:
         except Exception as e: st.error(f"Kalshi API: {e}")
     markets=st.session_state.get("markets",pd.DataFrame())
     if not markets.empty:
-        st.metric("Markets retrieved",len(markets))
-        columns=[x for x in ("ticker","title","subtitle","status") if x in markets.columns]
-        st.dataframe(markets[columns].head(1000),hide_index=True,use_container_width=True)
-        st.download_button("Download market catalog",markets.to_csv(index=False),"kalshi_markets.csv")
+        candidates=nba_three_point_candidates(markets)
+        st.metric("Markets sampled",len(markets))
+        st.metric("Possible NBA 3PT contracts",len(candidates))
+        st.caption("This is a capped sample of open markets, not an exhaustive NBA scan. Text matching can miss contracts or include false positives.")
+        columns=[x for x in ("ticker","title","subtitle","status","yes_ask_dollars","no_ask_dollars") if x in candidates.columns]
+        if candidates.empty:
+            st.info("No NBA 3PT contracts identified in the sampled pages. This does not mean Kalshi has none.")
+        else:
+            st.dataframe(candidates[columns].head(500),hide_index=True,use_container_width=True)
+            st.download_button("Download filtered candidates",candidates.to_csv(index=False),"nba_3pt_candidates.csv")
     st.stop()
 logs=logs.copy()
 logs["GAME_DATE"]=pd.to_datetime(logs["GAME_DATE"],errors="coerce")
@@ -84,10 +90,16 @@ if st.button("Fetch Kalshi markets"):
     except Exception as e: st.error(f"Kalshi API: {e}")
 markets=st.session_state.get("markets",pd.DataFrame())
 if not markets.empty:
-    st.metric("Markets retrieved",len(markets))
-    columns=[c for c in ("ticker","title","subtitle","status") if c in markets.columns]
-    st.dataframe(markets[columns].head(1000),hide_index=True,use_container_width=True)
-    st.download_button("Download market catalog",markets.to_csv(index=False),"kalshi_markets.csv")
+    candidates=nba_three_point_candidates(markets)
+    st.metric("Markets sampled",len(markets))
+    st.metric("Possible NBA 3PT contracts",len(candidates))
+    st.caption("Capped market sample; candidate matching is unverified and not exhaustive.")
+    columns=[c for c in ("ticker","title","subtitle","status","yes_ask_dollars","no_ask_dollars") if c in candidates.columns]
+    if not candidates.empty:
+        st.dataframe(candidates[columns].head(500),hide_index=True,use_container_width=True)
+        st.download_button("Download filtered candidates",candidates.to_csv(index=False),"nba_3pt_candidates.csv")
+    else:
+        st.info("No candidates in the sample. This does not prove none exist.")
 
 st.subheader("Verified ticker mapping and orderbooks")
 st.caption("Upload CSV with player,threshold,ticker. Mapping must match the exact 3PT YES contract. RFQ combos are not included.")
