@@ -19,7 +19,7 @@ def nba_player_logs(season='2026-27'):
         raise ValueError('NBA stats columns missing: '+str(required-set(df.columns)))
     return df
 
-def kalshi_markets(max_pages=20,status='open'):
+def kalshi_markets(max_pages=10,status='open'):
     s=requests.Session(); cursor=None; rows=[]
     for _ in range(max_pages):
         params={'limit':1000,'status':status}
@@ -47,3 +47,15 @@ def extract_best_asks(orderbook):
     y=best(book.get('yes_dollars',[]));n=best(book.get('no_dollars',[]))
     return {'yes_ask':round(1-n,4) if n is not None else None,
             'no_ask':round(1-y,4) if y is not None else None}
+
+def nba_three_point_candidates(markets):
+    """Conservative text filter. Discovery only, not a verified contract match."""
+    if markets is None or markets.empty:
+        return pd.DataFrame()
+    fields=[c for c in ('ticker','title','subtitle','yes_sub_title','no_sub_title','rules_primary','rules_secondary','event_ticker','series_ticker') if c in markets.columns]
+    if not fields:
+        return pd.DataFrame()
+    hay=markets[fields].fillna('').astype(str).agg(' '.join,axis=1)
+    nba=hay.str.contains(r'\bNBA\b|KXNBA|basketball',case=False,regex=True)
+    threes=hay.str.contains(r'3[- ]?point|3pt|three[- ]?point|three[- ]?pointer|3PM|made threes',case=False,regex=True)
+    return markets.loc[nba & threes].copy()
