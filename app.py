@@ -31,17 +31,37 @@ try:
 except Exception as e:
     st.warning(f"Schedule feed unavailable: {e}")
 
+st.subheader("Data feeds")
+st.caption("NBA.com often blocks cloud-hosted statistics requests. The dashboard will not contact that endpoint until you request it.")
+upload=st.file_uploader("Player logs CSV (optional): PLAYER_ID, PLAYER_NAME, TEAM_ABBREVIATION, GAME_DATE, FG3M, FG3A",type="csv")
 logs=None
-try: logs=get_logs(season)
-except Exception as e:
-    st.warning(f"NBA stats feed unavailable: {e}")
-    st.caption("NBA.com may block some cloud hosts. Upload game logs as CSV instead.")
-upload=st.file_uploader("Optional player logs CSV: PLAYER_ID, PLAYER_NAME, TEAM_ABBREVIATION, GAME_DATE, FG3M, FG3A",type="csv")
 if upload is not None:
-    try: logs=pd.read_csv(upload)
-    except Exception as e: st.error(str(e))
+    try:
+        logs=pd.read_csv(upload)
+    except Exception as e:
+        st.error(f"CSV error: {e}")
+if st.button("Try NBA.com player stats (may be slow)"):
+    st.session_state["fetch_nba_logs"]=True
+if st.session_state.get("fetch_nba_logs",False) and logs is None:
+    try:
+        with st.spinner("Requesting NBA player logs (cloud connection may time out)..."):
+            logs=get_logs(season)
+        st.session_state["fetch_nba_logs"]=False
+    except Exception as e:
+        st.warning(f"NBA stats feed unavailable: {e}")
+        st.session_state["fetch_nba_logs"]=False
 if logs is None or logs.empty:
-    st.info("Waiting for NBA logs or CSV upload.")
+    st.info("Player forecasts need game logs. Upload a CSV or tap the NBA.com button.")
+    st.subheader("Kalshi public market catalog")
+    if st.button("Fetch Kalshi markets"):
+        try: st.session_state["markets"]=get_markets()
+        except Exception as e: st.error(f"Kalshi API: {e}")
+    markets=st.session_state.get("markets",pd.DataFrame())
+    if not markets.empty:
+        st.metric("Markets retrieved",len(markets))
+        columns=[x for x in ("ticker","title","subtitle","status") if x in markets.columns]
+        st.dataframe(markets[columns].head(1000),hide_index=True,use_container_width=True)
+        st.download_button("Download market catalog",markets.to_csv(index=False),"kalshi_markets.csv")
     st.stop()
 logs=logs.copy()
 logs["GAME_DATE"]=pd.to_datetime(logs["GAME_DATE"],errors="coerce")
