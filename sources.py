@@ -60,7 +60,7 @@ def nba_three_point_candidates(markets):
     threes=hay.str.contains(r'3[- ]?point|3pt|three[- ]?point|three[- ]?pointer|3PM|made threes',case=False,regex=True)
     return markets.loc[nba & threes].copy()
 
-NBA_3PT_SERIES = ("KXNBA3PT", "KXNBAESCALATOR3PT", "KXNBA3PTPROT")
+NBA_3PT_SERIES = ("KXNBA3PT",)
 
 def kalshi_nba_three_point_markets(series_tickers=NBA_3PT_SERIES, max_pages_per_series=8):
     """Target known NBA 3PT series directly. Returns (markets, diagnostics)."""
