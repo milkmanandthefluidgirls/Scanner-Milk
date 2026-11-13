@@ -12,7 +12,7 @@ COLUMNS=["prediction_date","created_at_utc","player_id","player","team","thresho
 def select_candidates(forecasts, min_games=5, minimum=.90):
     if forecasts is None or forecasts.empty: return pd.DataFrame()
     parts=[]
-    for side in ("YES","NO"):
+    for side in ("YES",):
         t=forecasts.copy()
         t["side"]=side
         t["probability"]=t["fair_"+side.lower()]
