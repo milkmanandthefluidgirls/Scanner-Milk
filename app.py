@@ -26,12 +26,12 @@ def nba_three_point_candidates(markets):
 
 st.set_page_config(page_title="NBA 3PT Edge Scanner",page_icon="🏀",layout="wide")
 st.title("🏀 NBA 3PT Edge Scanner")
-st.caption("Read-only research | Independent baseline probabilities | No orders placed")
+st.caption("Read-only research | Volume-aware probability model | No orders placed")
 with st.sidebar:
     season=st.text_input("NBA season",value="2026-27")
     min_games=st.slider("Minimum games",3,25,5)
     min_edge=st.slider("Minimum estimated edge (%)",0,20,5)/100
-    st.warning("Uncalibrated model. REVIEW does not mean approved trade.")
+    st.warning("Uncalibrated model. No injury, minutes or opponent adjustment yet. REVIEW is not a trade recommendation.")
     if st.button("Clear cache"):
         st.cache_data.clear()
         st.rerun()
@@ -240,7 +240,7 @@ if forecasts.empty:
     st.warning("No qualifying player logs.")
     st.stop()
 st.subheader("Independent player forecasts")
-st.caption("Current 2026–27 regular-season data only. 65% season + 35% last-five attempts; shooting accuracy shrunk toward 36%; uncalibrated Poisson makes. No injury, minutes or opponent adjustment yet.")
+st.caption("Current 2026–27 regular-season data only. Volume mixture with observed game-to-game variation; 65% season + 35% last-five attempts; beta-binomial shooting accuracy shrunk toward 36%. Uncalibrated; no injury, expected minutes, or opponent adjustment yet.")
 st.dataframe(forecasts,hide_index=True,use_container_width=True)
 
 show_targeted_markets()
