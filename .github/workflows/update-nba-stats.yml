@@ -3,7 +3,8 @@ name: Update current-season NBA three-point stats
 on:
   workflow_dispatch:
   schedule:
-    - cron: '30 12 * * *'
+    - cron: '30 12 * * *'  # 7:30 AM EST: settle prior games
+    - cron: '0 22 * * *'   # 5:00 PM EST: save pregame picks
 
 permissions:
   contents: write
