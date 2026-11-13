@@ -29,8 +29,9 @@ def nba_schedule(game_date=None):
             continue
         competitors = competitions[0].get("competitors") or []
         by_side = {entry.get("homeAway"): entry.get("team", {}) for entry in competitors}
-        away = by_side.get("away", {}).get("abbreviation")
-        home = by_side.get("home", {}).get("abbreviation")
+        aliases = {"WSH": "WAS", "GS": "GSW", "SA": "SAS", "NY": "NYK", "NO": "NOP", "UTAH": "UTA"}
+        away = aliases.get(by_side.get("away", {}).get("abbreviation"), by_side.get("away", {}).get("abbreviation"))
+        home = aliases.get(by_side.get("home", {}).get("abbreviation"), by_side.get("home", {}).get("abbreviation"))
         if not away or not home:
             continue
         status = event.get("status", {}).get("type", {})
