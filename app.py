@@ -285,50 +285,49 @@ with curated_slot:
         market_error=None
         try:
             all_markets,market_diagnostics=get_targeted_markets()
-            if any(market_diagnostics["status"].eq("ERROR")):
+            if not market_diagnostics.empty and market_diagnostics["status"].eq("ERROR").any():
                 market_error="Kalshi returned an incomplete market scan."
             if not all_markets.empty:
                 today_et=dt.datetime.now(ZoneInfo("America/New_York")).date()
                 date_token=today_et.strftime("%y%b%d").upper()
                 markets_today=all_markets[
                     all_markets["ticker"].fillna("").str.upper().str.contains(date_token,regex=False)
-                ].copy()
+                ]
                 for _,market in markets_today.iterrows():
-                    match=re.fullmatch(r"\\s*(.+?):\\s*(\\d+)\\+\\s*threes\\s*",str(market.get("title","")),re.IGNORECASE)
+                    # Match standard titles, e.g. "Player Name: 2+ threes".
+                    match=re.fullmatch(r"\\s*(.+?):\\s*(\\d+)\\+\\s*threes\\s*",
+                                       str(market.get("title","")),re.IGNORECASE)
                     if match:
                         key=normalize_player_name(match.group(1))
                         market_thresholds.setdefault(key,set()).add(int(match.group(2)))
         except Exception as exc:
-            market_error=f"Kalshi thresholds unavailable: {exc}"
+            market_error=f"Kalshi market lookup failed: {exc}"
 
         if market_error:
-            st.warning(market_error+" Threshold columns will only appear when market discovery succeeds.")
+            st.warning(market_error+" Model estimates are still displayed below.")
         if not market_thresholds:
-            st.info("No verified standard Kalshi NBA 3PT thresholds found for today's games. Player probabilities are withheld rather than presenting unlisted contracts.")
-        else:
-            rows=[]
-            for _,pick in picks.head(25).iterrows():
-                name=normalize_player_name(pick["player"])
-                available=sorted(market_thresholds.get(name,set()))
-                if not available:
-                    continue
-                player_ladder=forecasts[forecasts["player_id"].astype(str)==str(pick["player_id"])]
-                row={"Player":pick["player"],"Team":pick["team"],
-                     "Qualifies at":str(int(pick["threshold"]))+"+",
-                     "Season games":int(pick["games"]),
-                     "3PA / game":round(float(pick["projected_pa"]),1)}
-                for threshold in available:
-                    matching=player_ladder[player_ladder["threshold"]==threshold]
-                    row[f"{threshold}+"]=(round(100*float(matching.iloc[0]["fair_yes"]),1)
-                                           if not matching.empty else float("nan"))
-                rows.append(row)
-            if rows:
-                ladder=pd.DataFrame(rows)
-                ladder=ladder.sort_values(["Player"]).reset_index(drop=True)
-                st.dataframe(ladder,hide_index=True,use_container_width=True)
-                st.caption("Model YES probability (%) at each threshold listed in today's standard Kalshi NBA 3PT markets. Players qualify by having at least one 90%+ model estimate; other thresholds may be below 90%. Blank means no listed or modeled threshold. Model is uncalibrated; no injury adjustment, price verification or positive EV is implied.")
-            else:
-                st.info("Qualifying players have no matching standard Kalshi 3PT contracts in today's scan.")
+            st.info("No matching standard Kalshi NBA 3PT contracts confirmed for today's games. Showing modeled 1+ through 4+ probabilities as a fallback; these thresholds are NOT verified as listed.")
+        rows=[]
+        for _,pick in picks.head(25).iterrows():
+            name=normalize_player_name(pick["player"])
+            listed=sorted(market_thresholds.get(name,set()))
+            # When the market feed is missing, keep the independent model usable.
+            available=listed if listed else [1,2,3,4]
+            player_ladder=forecasts[forecasts["player_id"].astype(str)==str(pick["player_id"])]
+            row={"Player":pick["player"],"Team":pick["team"],
+                 "90%+ at":str(int(pick["threshold"]))+"+",
+                 "Kalshi listing":"Confirmed" if listed else "Unverified",
+                 "Games":int(pick["games"]),
+                 "3PA / game":round(float(pick["projected_pa"]),1)}
+            for threshold in available:
+                matching=player_ladder[player_ladder["threshold"]==threshold]
+                row[f"{threshold}+"]=(round(100*float(matching.iloc[0]["fair_yes"]),1)
+                                       if not matching.empty else float("nan"))
+            rows.append(row)
+        ladder=pd.DataFrame(rows)
+        if not ladder.empty:
+            st.dataframe(ladder,hide_index=True,use_container_width=True)
+            st.caption("All threshold cells show independent model YES probability (%), NOT Kalshi market odds. Players qualify at 90%+ for at least one threshold. Confirmed rows use standard Kalshi 3PT listings for today's date; Unverified rows show modeled 1+ to 4+ as fallback. No escalator or protection contracts. Forecasts are uncalibrated, not injury-adjusted, and not price-verified.")
     else:
         st.info("No YES picks currently meet the 90% model cutoff and minimum-games requirement.")
 
