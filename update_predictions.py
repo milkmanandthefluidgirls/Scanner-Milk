@@ -20,7 +20,9 @@ def today_teams(date):
             for entry in competition.get("competitors",[]):
                 team=entry.get("team",{})
                 abbreviation=team.get("abbreviation")
-                if abbreviation:teams.add(abbreviation.upper())
+                if abbreviation:
+                    normalized={"WSH":"WAS","GS":"GSW","NY":"NYK","SA":"SAS","NO":"NOP","UTAH":"UTA"}.get(abbreviation.upper(),abbreviation.upper())
+                    teams.add(normalized)
     return teams
 
 def main():
