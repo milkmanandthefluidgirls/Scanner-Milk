@@ -25,7 +25,7 @@ def nba_three_point_candidates(markets):
                             case=False,regex=True)
     return markets.loc[nba & threes].copy()
 
-st.set_page_config(page_title="The Milkman | NBA 3PT Intel",page_icon="🥛",layout="wide",initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Milkball | NBA 3PT Intel",page_icon="🥛",layout="wide",initial_sidebar_state="collapsed")
 st.markdown("""
 <style>
 .block-container {max-width:1200px;padding-top:1.3rem;padding-bottom:3rem;}
@@ -46,7 +46,7 @@ hero_logo,hero_copy=st.columns([1,4],vertical_alignment="center",gap="medium")
 with hero_logo:
     if brand_logo.exists(): st.image(str(brand_logo),use_container_width=True)
 with hero_copy:
-    st.title("The Milkman")
+    st.title("Milkball")
     st.caption("NBA 3PT INTEL • Live market discovery • Independent forecasts")
 
 with st.sidebar:
