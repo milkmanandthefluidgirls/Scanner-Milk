@@ -23,17 +23,17 @@ def _beta_binomial_pmf(m,n,alpha,beta):
                     -math.lgamma(n+alpha+beta)+math.lgamma(alpha+beta)
                     -math.lgamma(alpha)-math.lgamma(beta))
 
-def forecast_probabilities(attempt_mean,attempt_variance,alpha,beta,max_attempts=75):
+def forecast_probabilities(attempt_mean,attempt_variance,alpha,beta,max_attempts=75,max_threshold=12):
     """Integrate a dispersed shot-attempt distribution over uncertain shooting accuracy."""
-    mass=[0.]*5
+    mass=[0.]*max_threshold
     normalizer=0.
     for n in range(max_attempts+1):
         weight=_volume_pmf(n,attempt_mean,attempt_variance)
         normalizer+=weight
-        for made in range(min(3,n)+1):
+        for made in range(min(max_threshold-1,n)+1):
             mass[made]+=weight*_beta_binomial_pmf(made,n,alpha,beta)
-    if normalizer<=0: return {t:float('nan') for t in (1,2,3,4)}
-    return {t:max(0.,min(1.,1.-sum(mass[:t])/normalizer)) for t in (1,2,3,4)}
+    if normalizer<=0: return {t:float('nan') for t in range(1,max_threshold+1)}
+    return {t:max(0.,min(1.,1.-sum(mass[:t])/normalizer)) for t in range(1,max_threshold+1)}
 
 def player_forecasts(logs,min_games=5,prior_attempts=70,prior_pct=.36):
     if logs is None or logs.empty:return pd.DataFrame()
