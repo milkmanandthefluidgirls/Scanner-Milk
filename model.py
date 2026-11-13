@@ -67,6 +67,8 @@ def player_forecasts(logs,min_games=5,prior_attempts=70,prior_pct=.36):
                 projected_pa_variance=round(variance,2),
                 shrunk_pct=round(accuracy,3),
                 hit_rate=round(float((g.FG3M>=threshold).mean()),3),
+                last5_hit_rate=round(float((recent.FG3M>=threshold).mean()),3),
+                last5_games=len(recent),
                 fair_yes=round(fair,4),fair_no=round(1-fair,4),
                 model=MODEL_NAME))
     return pd.DataFrame(out)
