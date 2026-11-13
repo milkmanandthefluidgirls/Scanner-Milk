@@ -331,6 +331,61 @@ with curated_slot:
     else:
         st.info("No YES picks currently meet the 90% model cutoff and minimum-games requirement.")
 
+    # Explain why every player on today's scheduled teams did or did not qualify.
+    with st.expander("Player eligibility audit · all matchups", expanded=False):
+        st.caption("Season-data audit for every scheduled team. Best YES probability is the highest across 1+ to 4+ made threes. This is not a confirmed active roster or injury report.")
+        audit_rows=[]
+        today_games=schedule[["away","home"]].drop_duplicates() if not schedule.empty else pd.DataFrame()
+        if not today_games.empty:
+            # Include players who lack enough games to enter player_forecasts.
+            source_logs=logs.copy()
+            source_logs["PLAYER_ID"]=source_logs["PLAYER_ID"].astype(str)
+            for _,matchup in today_games.iterrows():
+                matchup_label=f'{matchup["away"]} @ {matchup["home"]}'
+                for team_code in (matchup["away"],matchup["home"]):
+                    team_logs=source_logs[source_logs["TEAM_ABBREVIATION"]==team_code]
+                    if team_logs.empty:
+                        audit_rows.append({"Game":matchup_label,"Team":team_code,"Player":"No player logs","Games":0,"Proj 3PA":None,"Best YES %":None,"Best threshold":"—","Status":"MISSING TEAM DATA"})
+                        continue
+                    for player_id,history in team_logs.groupby("PLAYER_ID"):
+                        history=history.sort_values("GAME_DATE",ascending=False)
+                        latest=history.iloc[0]
+                        name=str(latest["PLAYER_NAME"])
+                        n=len(history)
+                        season_pa=float(history["FG3A"].mean())
+                        recent_pa=float(history.head(5)["FG3A"].mean())
+                        projected=.65*season_pa+.35*recent_pa
+                        player_fc=forecasts[forecasts["player_id"].astype(str)==player_id]
+                        eligible_fc=player_fc[player_fc["threshold"].between(1,4)] if not player_fc.empty else player_fc
+                        best=eligible_fc.sort_values("fair_yes",ascending=False).head(1)
+                        best_pct=round(float(best.iloc[0]["fair_yes"])*100,1) if not best.empty else None
+                        best_threshold=f'{int(best.iloc[0]["threshold"])}+' if not best.empty else "—"
+                        if n<min_games:
+                            status=f'INSUFFICIENT GAMES ({n}/{min_games})'
+                        elif projected<1.5:
+                            status="LOW 3PA VOLUME"
+                        elif best_pct is None:
+                            status="NO MODEL FORECAST"
+                        elif best_pct>=90:
+                            status="QUALIFIES 90%+"
+                        else:
+                            status="BELOW 90%"
+                        audit_rows.append({"Game":matchup_label,"Team":team_code,"Player":name,
+                                           "Games":n,"Proj 3PA":round(projected,1),
+                                           "Best YES %":best_pct,"Best threshold":best_threshold,
+                                           "Status":status})
+            audit=pd.DataFrame(audit_rows)
+            game_options=list(dict.fromkeys(audit["Game"].tolist()))
+            game_choice=st.selectbox("Matchup",["All matchups"]+game_options,key="eligibility_game")
+            audit_view=audit if game_choice=="All matchups" else audit[audit["Game"]==game_choice]
+            st.dataframe(audit_view.sort_values(["Game","Team","Best YES %"],ascending=[True,True,False],na_position="last"),
+                         hide_index=True,use_container_width=True)
+            st.caption("Historical team assignment is taken from each player's latest stored game for that team; traded or inactive players may appear. Availability must be checked separately.")
+            st.download_button("Download player eligibility audit",audit.to_csv(index=False),
+                               "milkball_player_eligibility_audit.csv",key="eligibility_download")
+        else:
+            st.info("No scheduled games available for an eligibility audit.")
+
     st.subheader("Model results tracker")
     st.caption("Only predictions saved before games are graded. Historical season hit rates are not counted as model wins.")
     tracked=load_predictions()
