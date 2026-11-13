@@ -15,7 +15,17 @@ def today_teams(date):
     r=requests.get(url,params={"dates":date.replace("-",""),"limit":100},timeout=20)
     r.raise_for_status()
     teams=set()
+    now=dt.datetime.now(dt.timezone.utc)
     for event in r.json().get("events",[]):
+        # Never create a pregame snapshot after the event has started.
+        start=event.get("date")
+        if not start:continue
+        try:
+            start_utc=dt.datetime.fromisoformat(start.replace("Z","+00:00"))
+        except ValueError:
+            continue
+        if start_utc<=now:continue
+        if event.get("status",{}).get("type",{}).get("state")!="pre":continue
         for competition in event.get("competitions",[]):
             for entry in competition.get("competitors",[]):
                 team=entry.get("team",{})
