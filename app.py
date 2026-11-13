@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from model import player_forecasts, score
+from validation import validate_logs, season_hit_rates
 from espn_stats import fetch_espn_logs, ESPNFeedError
 from sources import nba_schedule, nba_player_logs, kalshi_markets, kalshi_orderbook, extract_best_asks
 
@@ -198,13 +199,43 @@ if logs is None or logs.empty:
             st.dataframe(candidates[columns].head(500),hide_index=True,use_container_width=True)
             st.download_button("Download filtered candidates",candidates.to_csv(index=False),"nba_3pt_candidates.csv")
     st.stop()
+st.subheader("Data quality checks")
+manifest_data=json.loads(manifest_path.read_text()) if manifest_path.exists() else None
+logs,quality=validate_logs(logs,manifest_data)
+q1,q2,q3=st.columns(3)
+q1.metric("Validated player-game rows",quality.get("rows",0))
+q2.metric("Unique games",quality.get("games",0))
+q3.metric("Invalid / duplicate rows",quality.get("invalid_rows",0)+quality.get("duplicate_rows",0))
+if quality.get("errors"):
+    st.error("Data validation issues detected. Forecasts are withheld until the source data is corrected.")
+    for issue in quality["errors"]: st.write("• "+issue)
+if quality.get("warnings"):
+    st.warning("Data completeness warnings. Treat all model outputs as preliminary.")
+    for issue in quality["warnings"]: st.write("• "+issue)
+with st.expander("Data validation details"):
+    st.json(quality)
+if quality.get("errors"):
+    st.stop()
+st.subheader("Actual current-season three-point hit rates")
+st.caption("Observed regular-season results only; not predicted probabilities. Last-5 and last-10 samples use actual games played.")
+hit_rates=season_hit_rates(logs,min_games=min_games)
+if not schedule.empty and not hit_rates.empty:
+    today_teams=set(schedule["away"])|set(schedule["home"])
+    hit_rates=hit_rates[hit_rates["team"].isin(today_teams)]
+if not hit_rates.empty:
+    selected_threshold=st.selectbox("Made threes threshold",[1,2,3,4],index=1,format_func=lambda v:f"{v}+ threes")
+    rate_view=hit_rates[hit_rates["threshold"]==selected_threshold].sort_values(["season_hit_rate","games"],ascending=False)
+    st.dataframe(rate_view,hide_index=True,use_container_width=True)
+    st.download_button("Download current-season hit rates",hit_rates.to_csv(index=False),"nba_2026_27_3pt_hit_rates.csv",key="download_hit_rates")
+else:
+    st.info("No players match the minimum games and today's teams.")
 logs=logs.copy()
 logs["GAME_DATE"]=pd.to_datetime(logs["GAME_DATE"],errors="coerce")
 logs=logs[logs["GAME_DATE"].dt.date < dt.datetime.now(dt.timezone(dt.timedelta(hours=-5))).date()]
-if not schedule.empty:
-    teams=set(schedule["away"])|set(schedule["home"])
-    logs=logs[logs["TEAM_ABBREVIATION"].isin(teams)]
 forecasts=player_forecasts(logs,min_games)
+if not schedule.empty and not forecasts.empty:
+    teams=set(schedule["away"])|set(schedule["home"])
+    forecasts=forecasts[forecasts["team"].isin(teams)]
 if forecasts.empty:
     st.warning("No qualifying player logs.")
     st.stop()
