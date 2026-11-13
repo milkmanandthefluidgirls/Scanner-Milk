@@ -273,10 +273,13 @@ with curated_slot:
         picks=picks.head(25).copy()
         picks["Pick"]=picks["player"]+" · "+picks["side"]+" "+picks["threshold"].astype(str)+"+"
         picks["Model %"]=(picks["probability"]*100).round(1)
-        picks["Season %"]=(100*picks["hit_rate"]).round(1)\n        picks["3PA / game"]=picks["projected_pa"].round(1)\n        picks["Team"]=picks["team"]
-        st.dataframe(picks[["Pick","Team","Model %","Season %","games","3PA / game"]].rename(columns={"games":"Games"}),
+        picks["Season %"]=(100*picks["hit_rate"]).round(1)
+        picks["Last 5 %"]=(100*picks["last5_hit_rate"]).round(1)
+        picks["3PA / game"]=picks["projected_pa"].round(1)
+        picks["Team"]=picks["team"]
+        st.dataframe(picks[["Pick","Team","Model %","Season %","Last 5 %","games","3PA / game"]].rename(columns={"games":"Games"}),
                      hide_index=True,use_container_width=True)
-        st.caption("One highest-probability YES threshold per player; up to 25 displayed. Model % is estimated; Season % is observed. No live market price or EV is implied.")
+        st.caption("One highest-probability YES threshold per player; up to 25 displayed. Model % is estimated; Season % and Last 5 % are actual game hit rates. Last 5 % uses the five most recent completed games, not necessarily five calendar days. No live market price or EV is implied.")
     else:
         st.info("No YES picks currently meet the 90% model cutoff and minimum-games requirement.")
 
