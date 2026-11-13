@@ -65,7 +65,7 @@ def get_espn_logs(days,as_of):
 @st.cache_data(ttl=900)
 def get_logs(s): return nba_player_logs(s)
 @st.cache_data(ttl=300)
-def get_schedule(): return nba_schedule()
+def get_schedule(eastern_date): return nba_schedule(eastern_date)
 @st.cache_data(ttl=300)
 def get_markets(): return kalshi_markets()
 
@@ -147,7 +147,7 @@ def show_targeted_markets():
 
 schedule=pd.DataFrame()
 try:
-    schedule=get_schedule()
+    schedule=get_schedule(dt.datetime.now(__import__("zoneinfo").ZoneInfo("America/New_York")).date())
     st.subheader("Tonight’s matchups")
     st.dataframe(schedule,hide_index=True,use_container_width=True)
 except Exception as e:
