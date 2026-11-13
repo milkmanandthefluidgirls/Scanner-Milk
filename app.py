@@ -266,19 +266,19 @@ if forecasts.empty:
     st.stop()
 # Curated model estimates and prospective results directly beneath matchups.
 with curated_slot:
-    st.subheader("Model picks · 90%+")
-    st.caption("Current-season model estimates only · 90% minimum · Not price-verified or injury-adjusted")
+    st.subheader("Model picks · YES 90%+")
+    st.caption("YES to made threes only · 90%+ model probability · Current season · Not price-verified or injury-adjusted")
     picks=select_candidates(forecasts,min_games=min_games,minimum=.90)
     if not picks.empty:
         picks=picks.head(25).copy()
         picks["Pick"]=picks["player"]+" · "+picks["side"]+" "+picks["threshold"].astype(str)+"+"
         picks["Model %"]=(picks["probability"]*100).round(1)
-        picks["Season %"]=(100*picks["hit_rate"].where(picks["side"]=="YES",1-picks["hit_rate"])).round(1)
-        st.dataframe(picks[["Pick","Model %","Season %","games"]].rename(columns={"games":"Games"}),
+        picks["Season %"]=(100*picks["hit_rate"]).round(1)\n        picks["3PA / game"]=picks["projected_pa"].round(1)\n        picks["Team"]=picks["team"]
+        st.dataframe(picks[["Pick","Team","Model %","Season %","games","3PA / game"]].rename(columns={"games":"Games"}),
                      hide_index=True,use_container_width=True)
-        st.caption("One highest-probability pick per player; up to 25 displayed. A 90% forecast is not a validated 90% hit rate.")
+        st.caption("One highest-probability YES threshold per player; up to 25 displayed. Model % is estimated; Season % is observed. No live market price or EV is implied.")
     else:
-        st.info("No picks currently meet the 90% model cutoff and minimum-games requirement.")
+        st.info("No YES picks currently meet the 90% model cutoff and minimum-games requirement.")
 
     st.subheader("Model results tracker")
     st.caption("Only predictions saved before games are graded. Historical season hit rates are not counted as model wins.")
