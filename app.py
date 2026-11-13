@@ -295,7 +295,7 @@ with curated_slot:
                 ]
                 for _,market in markets_today.iterrows():
                     # Match standard titles, e.g. "Player Name: 2+ threes".
-                    match=re.fullmatch(r"\\s*(.+?):\\s*(\\d+)\\+\\s*threes\\s*",
+                    match=re.fullmatch(r"\s*(.+?):\s*(\d+)\+\s*threes\s*",
                                        str(market.get("title","")),re.IGNORECASE)
                     if match:
                         key=normalize_player_name(match.group(1))
