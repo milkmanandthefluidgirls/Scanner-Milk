@@ -152,6 +152,9 @@ try:
 except Exception as e:
     st.warning(f"Schedule feed unavailable: {e}")
 
+# Reserve this spot so curated signals appear immediately after tonight's games.
+curated_slot=st.container()
+
 st.subheader("Season data")
 st.caption("Current season ONLY. Saved game logs are updated by GitHub Actions and persist across dashboard restarts.")
 logs=None
@@ -260,6 +263,39 @@ if not schedule.empty and not forecasts.empty:
 if forecasts.empty:
     st.warning("No qualifying player logs.")
     st.stop()
+# Model-only shortlist; prices and injury availability have NOT been verified.
+with curated_slot:
+    st.subheader("Model shortlist")
+    st.caption("Current-season 3PT model estimates, not confirmed bets. No live prices, injury or lineup adjustments.")
+    curated=forecasts.copy()
+    if not curated.empty:
+        yes=curated[["player","team","threshold","games","hit_rate","fair_yes","projected_pa"]].copy()
+        yes["side"]="YES"
+        yes["probability"]=yes["fair_yes"]
+        no=curated[["player","team","threshold","games","hit_rate","fair_no","projected_pa"]].copy()
+        no["side"]="NO"
+        no["probability"]=no["fair_no"]
+        candidates=pd.concat([yes,no],ignore_index=True)
+        candidates=candidates[(candidates["games"]>=max(min_games,5)) &
+                              (candidates["projected_pa"]>=1.5) &
+                              (candidates["probability"].between(.70,.96))]
+        candidates=candidates.sort_values(["probability","games"],ascending=[False,False])
+        # A single player should not occupy the entire shortlist.
+        candidates=candidates.drop_duplicates("player").head(8)
+        if len(candidates):
+            candidates["pick"]=candidates["player"]+" · "+candidates["side"]+" "+candidates["threshold"].astype(str)+"+"
+            candidates["model %"]=(100*candidates["probability"]).round(1)
+            candidates["season hits %"]=(100*candidates["hit_rate"].where(candidates["side"]=="YES",1-candidates["hit_rate"])).round(1)
+            candidates["3PA / game"]=candidates["projected_pa"].round(1)
+            st.dataframe(candidates[["pick","team","model %","season hits %","games","3PA / game"]].rename(
+                columns={"pick":"Model pick","team":"Team","games":"Games"}),
+                hide_index=True,use_container_width=True)
+            st.caption("Ranked by model probability, not expected value. Verify availability and Kalshi YES/NO prices before acting.")
+        else:
+            st.info("Not enough qualified model candidates for tonight's teams.")
+    else:
+        st.info("No qualifying forecasts for tonight's games.")
+
 st.subheader("Player forecasts")
 st.caption("Current 2026–27 regular-season data only. Volume mixture with observed game-to-game variation; 65% season + 35% last-five attempts; beta-binomial shooting accuracy shrunk toward 36%. Uncalibrated; no injury, expected minutes, or opponent adjustment yet.")
 st.dataframe(forecasts,hide_index=True,use_container_width=True)
