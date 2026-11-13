@@ -24,9 +24,30 @@ def nba_three_point_candidates(markets):
                             case=False,regex=True)
     return markets.loc[nba & threes].copy()
 
-st.set_page_config(page_title="NBA 3PT Edge Scanner",page_icon="🏀",layout="wide")
-st.title("🏀 NBA 3PT Edge Scanner")
-st.caption("Read-only research | Volume-aware probability model | No orders placed")
+st.set_page_config(page_title="Scanner-Milk | NBA 3PT Research",page_icon="🥛",layout="wide",initial_sidebar_state="collapsed")
+st.markdown("""
+<style>
+.block-container {max-width:1200px;padding-top:1.3rem;padding-bottom:3rem;}
+h1,h2,h3 {letter-spacing:-.035em;}
+h1 {font-size:clamp(2rem,4vw,3.1rem)!important;font-weight:800!important;}
+h2 {font-size:1.55rem!important;margin-top:1.4rem!important;}
+[data-testid="stMetric"] {background:#14233a;border:1px solid #293c58;border-radius:16px;padding:14px 16px;}
+[data-testid="stMetricLabel"] {color:#bdcde2;}
+[data-testid="stMetricValue"] {font-weight:750;letter-spacing:-.035em;}
+[data-testid="stDataFrame"] {border-radius:14px;overflow:hidden;}
+.stButton button,.stDownloadButton button {border-radius:12px;font-weight:650;min-height:2.7rem;}
+div[data-testid="stAlert"] {border-radius:12px;}
+@media(max-width:640px){.block-container{padding-left:1rem;padding-right:1rem;}h2{font-size:1.35rem!important;}}
+</style>
+""",unsafe_allow_html=True)
+brand_logo=Path(__file__).parent/"assets"/"scanner_milk_logo.svg"
+hero_logo,hero_copy=st.columns([1,4],vertical_alignment="center",gap="medium")
+with hero_logo:
+    if brand_logo.exists(): st.image(str(brand_logo),use_container_width=True)
+with hero_copy:
+    st.title("Scanner-Milk")
+    st.caption("NBA three-point research • Live market discovery • Independent forecasts")
+st.info("Research only · No orders placed · Model estimates are not verified trading edges")
 with st.sidebar:
     season=st.text_input("NBA season",value="2026-27")
     min_games=st.slider("Minimum games",3,25,5)
@@ -126,12 +147,12 @@ def show_targeted_markets():
 schedule=pd.DataFrame()
 try:
     schedule=get_schedule()
-    st.subheader("Today's NBA games")
+    st.subheader("Tonight’s matchups")
     st.dataframe(schedule,hide_index=True,use_container_width=True)
 except Exception as e:
     st.warning(f"Schedule feed unavailable: {e}")
 
-st.subheader("2026–27 NBA regular-season player statistics")
+st.subheader("Season data")
 st.caption("Current season ONLY. Saved game logs are updated by GitHub Actions and persist across dashboard restarts.")
 logs=None
 saved_path=Path("data/nba_2026_27_regular_season_3pt.csv")
@@ -199,7 +220,7 @@ if logs is None or logs.empty:
             st.dataframe(candidates[columns].head(500),hide_index=True,use_container_width=True)
             st.download_button("Download filtered candidates",candidates.to_csv(index=False),"nba_3pt_candidates.csv")
     st.stop()
-st.subheader("Data quality checks")
+st.subheader("Data health")
 manifest_data=json.loads(manifest_path.read_text()) if manifest_path.exists() else None
 logs,quality=validate_logs(logs,manifest_data)
 q1,q2,q3=st.columns(3)
@@ -216,7 +237,7 @@ with st.expander("Data validation details"):
     st.json(quality)
 if quality.get("errors"):
     st.stop()
-st.subheader("Actual current-season three-point hit rates")
+st.subheader("Historical hit rates")
 st.caption("Observed regular-season results only; not predicted probabilities. Last-5 and last-10 samples use actual games played.")
 hit_rates=season_hit_rates(logs,min_games=min_games)
 if not schedule.empty and not hit_rates.empty:
@@ -239,7 +260,7 @@ if not schedule.empty and not forecasts.empty:
 if forecasts.empty:
     st.warning("No qualifying player logs.")
     st.stop()
-st.subheader("Independent player forecasts")
+st.subheader("Player forecasts")
 st.caption("Current 2026–27 regular-season data only. Volume mixture with observed game-to-game variation; 65% season + 35% last-five attempts; beta-binomial shooting accuracy shrunk toward 36%. Uncalibrated; no injury, expected minutes, or opponent adjustment yet.")
 st.dataframe(forecasts,hide_index=True,use_container_width=True)
 
@@ -262,7 +283,7 @@ if not markets.empty:
     else:
         st.info("No candidates in the sample. This does not prove none exist.")
 
-st.subheader("Verified ticker mapping and orderbooks")
+st.subheader("Contract mapping & orderbooks")
 st.caption("Upload CSV with player,threshold,ticker. Mapping must match the exact 3PT YES contract. RFQ combos are not included.")
 mapping_upload=st.file_uploader("Verified contract mapping CSV",type="csv",key="mapping")
 if mapping_upload is not None:
