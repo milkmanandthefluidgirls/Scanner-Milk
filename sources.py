@@ -3,11 +3,44 @@ import requests
 import pandas as pd
 BASE='https://external-api.kalshi.com/trade-api/v2'
 
-def nba_schedule():
-    from nba_api.live.nba.endpoints import scoreboard
-    games=scoreboard.ScoreBoard().games.get_dict()
-    return pd.DataFrame([{'game_id':g['gameId'],'away':g['awayTeam']['teamTricode'],
-        'home':g['homeTeam']['teamTricode'],'status':g.get('gameStatusText','')} for g in games])
+def nba_schedule(game_date=None):
+    """Fetch the NBA schedule for an explicit US/Eastern calendar date.
+
+    The NBA live scoreboard can retain yesterday's games in the morning.
+    ESPN's date-scoped scoreboard avoids that ambiguity.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    if game_date is None:
+        game_date = datetime.now(ZoneInfo("America/New_York")).date()
+    date_string = game_date.strftime("%Y%m%d") if hasattr(game_date, "strftime") else str(game_date).replace("-", "")
+    response = requests.get(
+        "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard",
+        params={"dates": date_string, "limit": 100},
+        timeout=20,
+    )
+    response.raise_for_status()
+    events = response.json().get("events", [])
+    rows = []
+    for event in events:
+        competitions = event.get("competitions") or []
+        if not competitions:
+            continue
+        competitors = competitions[0].get("competitors") or []
+        by_side = {entry.get("homeAway"): entry.get("team", {}) for entry in competitors}
+        away = by_side.get("away", {}).get("abbreviation")
+        home = by_side.get("home", {}).get("abbreviation")
+        if not away or not home:
+            continue
+        status = event.get("status", {}).get("type", {})
+        rows.append({
+            "game_id": event.get("id", ""),
+            "away": away,
+            "home": home,
+            "status": status.get("shortDetail") or status.get("detail") or "",
+        })
+    return pd.DataFrame(rows, columns=["game_id", "away", "home", "status"])
 
 def nba_player_logs(season='2026-27'):
     from nba_api.stats.endpoints import leaguegamelog
