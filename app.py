@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from model import player_forecasts, score
+from tracking import select_candidates, load_predictions, summarize
 from validation import validate_logs, season_hit_rates
 from espn_stats import fetch_espn_logs, ESPNFeedError
 from sources import nba_schedule, nba_player_logs, kalshi_markets, kalshi_orderbook, extract_best_asks
@@ -263,38 +264,59 @@ if not schedule.empty and not forecasts.empty:
 if forecasts.empty:
     st.warning("No qualifying player logs.")
     st.stop()
-# Model-only shortlist; prices and injury availability have NOT been verified.
+# Curated model estimates and prospective results directly beneath matchups.
 with curated_slot:
-    st.subheader("Model shortlist")
-    st.caption("Current-season 3PT model estimates, not confirmed bets. No live prices, injury or lineup adjustments.")
-    curated=forecasts.copy()
-    if not curated.empty:
-        yes=curated[["player","team","threshold","games","hit_rate","fair_yes","projected_pa"]].copy()
-        yes["side"]="YES"
-        yes["probability"]=yes["fair_yes"]
-        no=curated[["player","team","threshold","games","hit_rate","fair_no","projected_pa"]].copy()
-        no["side"]="NO"
-        no["probability"]=no["fair_no"]
-        candidates=pd.concat([yes,no],ignore_index=True)
-        candidates=candidates[(candidates["games"]>=max(min_games,5)) &
-                              (candidates["projected_pa"]>=1.5) &
-                              (candidates["probability"].between(.70,.96))]
-        candidates=candidates.sort_values(["probability","games"],ascending=[False,False])
-        # A single player should not occupy the entire shortlist.
-        candidates=candidates.drop_duplicates("player").head(8)
-        if len(candidates):
-            candidates["pick"]=candidates["player"]+" · "+candidates["side"]+" "+candidates["threshold"].astype(str)+"+"
-            candidates["model %"]=(100*candidates["probability"]).round(1)
-            candidates["season hits %"]=(100*candidates["hit_rate"].where(candidates["side"]=="YES",1-candidates["hit_rate"])).round(1)
-            candidates["3PA / game"]=candidates["projected_pa"].round(1)
-            st.dataframe(candidates[["pick","team","model %","season hits %","games","3PA / game"]].rename(
-                columns={"pick":"Model pick","team":"Team","games":"Games"}),
-                hide_index=True,use_container_width=True)
-            st.caption("Ranked by model probability, not expected value. Verify availability and Kalshi YES/NO prices before acting.")
-        else:
-            st.info("Not enough qualified model candidates for tonight's teams.")
+    st.subheader("Model picks · 90%+")
+    st.caption("Current-season model estimates only · 90% minimum · Not price-verified or injury-adjusted")
+    picks=select_candidates(forecasts,min_games=min_games,minimum=.90)
+    if not picks.empty:
+        picks=picks.head(25).copy()
+        picks["Pick"]=picks["player"]+" · "+picks["side"]+" "+picks["threshold"].astype(str)+"+"
+        picks["Model %"]=(picks["probability"]*100).round(1)
+        picks["Season %"]=(100*picks["hit_rate"].where(picks["side"]=="YES",1-picks["hit_rate"])).round(1)
+        st.dataframe(picks[["Pick","Model %","Season %","games"]].rename(columns={"games":"Games"}),
+                     hide_index=True,use_container_width=True)
+        st.caption("One highest-probability pick per player; up to 25 displayed. A 90% forecast is not a validated 90% hit rate.")
     else:
-        st.info("No qualifying forecasts for tonight's games.")
+        st.info("No picks currently meet the 90% model cutoff and minimum-games requirement.")
+
+    st.subheader("Model results tracker")
+    st.caption("Only predictions saved before games are graded. Historical season hit rates are not counted as model wins.")
+    tracked=load_predictions()
+    settled=tracked[tracked["correct"].notna()].copy()
+    period=st.selectbox("Results period",["Last 7 days","Last 30 days","This season","Custom dates"],index=1,key="tracking_period")
+    today=dt.datetime.now(dt.timezone.utc).date()
+    if period=="Custom dates":
+        d1,d2=st.columns(2)
+        start_date=d1.date_input("From",value=today-dt.timedelta(days=30),key="track_from")
+        end_date=d2.date_input("To",value=today,key="track_to")
+    elif period=="Last 7 days":
+        start_date,end_date=today-dt.timedelta(days=6),today
+    elif period=="Last 30 days":
+        start_date,end_date=today-dt.timedelta(days=29),today
+    else:
+        start_date,end_date=dt.date(2026,10,1),today
+    if not settled.empty:
+        settled=settled[settled["prediction_date"].between(str(start_date),str(end_date))]
+    if not settled.empty:
+        correct=settled["correct"].astype(str).str.lower().eq("true")
+        a,b,d=st.columns(3)
+        a.metric("Accuracy",f"{correct.mean()*100:.1f}%")
+        b.metric("Correct",f"{int(correct.sum())} / {len(correct)}")
+        d.metric("Pending",int(tracked["correct"].isna().sum()))
+        daily=summarize(settled)
+        st.dataframe(daily.sort_values("Date",ascending=False),hide_index=True,use_container_width=True)
+        st.line_chart(daily.set_index("Date")["Accuracy"])
+        with st.expander("Individual prediction results"):
+            view=settled[["prediction_date","player","side","threshold","probability","result","correct"]].copy()
+            view["probability"]=(view["probability"]*100).round(1)
+            st.dataframe(view.sort_values("prediction_date",ascending=False),hide_index=True,use_container_width=True)
+        st.download_button("Download tracked results",settled.to_csv(index=False),"scanner_milk_model_results.csv",key="track_download")
+    else:
+        st.info("No settled, pregame predictions in this period yet. Daily snapshots will begin after the next successful GitHub Actions run.")
+        if not tracked.empty:
+            st.caption(f"{int(tracked['correct'].isna().sum())} predictions are awaiting completed player boxscores.")
+    st.caption("Tracking starts with saved prospective predictions; it does not backfill hypothetical historical picks. Missing player boxscores remain ungraded.")
 
 st.subheader("Player forecasts")
 st.caption("Current 2026–27 regular-season data only. Volume mixture with observed game-to-game variation; 65% season + 35% last-five attempts; beta-binomial shooting accuracy shrunk toward 36%. Uncalibrated; no injury, expected minutes, or opponent adjustment yet.")
