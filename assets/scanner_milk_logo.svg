@@ -1,1 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><rect width="240" height="240" rx="48" fill="#091c3d"/><path d="M58 112L69 195Q120 212 171 195L182 112" fill="#f9f8f3" stroke="#9bd6f3" stroke-width="7" stroke-linejoin="round"/><path d="M65 132Q120 150 175 132L169 190Q120 207 71 190Z" fill="#f3f4ee"/><circle cx="120" cy="86" r="54" fill="#ff8c21" stroke="#142340" stroke-width="6"/><path d="M66 86H174M120 32V140M80 48Q130 84 80 124M160 48Q110 84 160 124" fill="none" stroke="#142340" stroke-width="6"/><path d="M78 109Q110 132 140 107" fill="none" stroke="#fffefa" stroke-width="13" stroke-linecap="round"/><path d="M60 119Q120 135 180 119" fill="none" stroke="#9bd6f3" stroke-width="6"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="Milkball: hand dunking a bitten basketball cookie into milk">
+<rect width="240" height="240" rx="46" fill="#091c3d"/>
+<!-- milk glass -->
+<path d="M52 112L65 201Q120 216 175 201L188 112Z" fill="#f9f8f3" stroke="#95d9f5" stroke-width="6" stroke-linejoin="round"/>
+<path d="M62 139Q120 151 178 139L170 195Q120 207 70 195Z" fill="#f1f4f1"/>
+<!-- bitten basketball cookie -->
+<path d="M76 114C64 101 64 79 76 63C87 46 106 39 124 42C143 44 158 57 164 74C157 75 153 81 156 87C159 92 165 93 169 91C175 102 170 119 158 130C136 149 95 142 76 114Z" fill="#f89b36" stroke="#15223c" stroke-width="5" stroke-linejoin="round"/>
+<path d="M119 43L119 136M74 91L165 91M87 55Q130 90 88 126M149 57Q111 87 152 122" fill="none" stroke="#15223c" stroke-width="4.5" stroke-linecap="round"/>
+<g fill="#663a2b"><circle cx="96" cy="74" r="5"/><circle cx="140" cy="110" r="5"/><circle cx="104" cy="116" r="4"/><circle cx="145" cy="67" r="4"/></g>
+<!-- simple white glove/hand pinching cookie -->
+<path d="M143 13Q155 9 166 18L192 39Q200 47 194 56Q190 62 181 59L158 44L150 68Q147 77 139 76Q131 75 132 65L138 41L120 58Q113 64 106 58Q101 52 108 44L132 20Q137 15 143 13Z" fill="#fffefa" stroke="#15223c" stroke-width="5" stroke-linejoin="round"/>
+<path d="M151 20L139 41" fill="none" stroke="#b5dff3" stroke-width="4" stroke-linecap="round"/>
+<!-- cookie bite crumbs -->
+<g fill="#f89b36"><circle cx="176" cy="78" r="3"/><circle cx="184" cy="89" r="2.5"/><circle cx="175" cy="100" r="2"/></g>
+<!-- milk splash -->
+<path d="M56 116Q42 105 44 91Q59 96 67 110Q68 89 79 85Q84 101 89 112Q107 129 122 116Q140 104 148 113Q163 127 177 110Q186 96 196 94Q196 111 184 120Q171 139 151 126Q133 145 116 134Q98 143 82 128Q67 138 56 116Z" fill="#fffefa" stroke="#fffefa" stroke-width="2"/>
+<path d="M53 116Q120 135 187 116" fill="none" stroke="#8bd9f7" stroke-width="6" stroke-linecap="round"/>
+<g fill="#fffefa"><circle cx="40" cy="105" r="4"/><circle cx="202" cy="105" r="5"/><circle cx="194" cy="84" r="3"/></g>
+</svg>
