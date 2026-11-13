@@ -48,7 +48,7 @@ with hero_logo:
 with hero_copy:
     st.title("Scanner-Milk")
     st.caption("NBA three-point research • Live market discovery • Independent forecasts")
-st.info("Research only · No orders placed · Model estimates are not verified trading edges")
+
 with st.sidebar:
     season=st.text_input("NBA season",value="2026-27")
     min_games=st.slider("Minimum games",3,25,5)
@@ -274,7 +274,18 @@ with curated_slot:
         picks["Pick"]=picks["player"]+" · "+picks["side"]+" "+picks["threshold"].astype(str)+"+"
         picks["Model %"]=(picks["probability"]*100).round(1)
         picks["Season %"]=(100*picks["hit_rate"]).round(1)
-        picks["Last 5 %"]=(100*picks["last5_hit_rate"]).round(1)
+        # Support forecast data produced before last5_hit_rate was introduced.
+        # Calculate from the already validated current-season game logs when absent.
+        if "last5_hit_rate" not in picks.columns:
+            recent_logs=logs.sort_values(["GAME_DATE","GAME_ID"],ascending=False).groupby("PLAYER_ID").head(5)
+            last5_rates={
+                (str(pid),int(threshold)):float((group["FG3M"]>=threshold).mean())
+                for pid,group in recent_logs.groupby("PLAYER_ID")
+                for threshold in (1,2,3,4)
+            }
+            picks["last5_hit_rate"]=[last5_rates.get((str(pid),int(t)),float("nan"))
+                                      for pid,t in zip(picks["player_id"],picks["threshold"])]
+        picks["Last 5 %"]=(100*pd.to_numeric(picks["last5_hit_rate"],errors="coerce")).round(1)
         picks["3PA / game"]=picks["projected_pa"].round(1)
         picks["Team"]=picks["team"]
         st.dataframe(picks[["Pick","Team","Model %","Season %","Last 5 %","games","3PA / game"]].rename(columns={"games":"Games"}),
