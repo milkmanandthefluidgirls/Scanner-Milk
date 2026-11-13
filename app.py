@@ -270,27 +270,65 @@ with curated_slot:
     st.caption("YES to made threes only · 90%+ model probability · Current season · Not price-verified or injury-adjusted")
     picks=select_candidates(forecasts,min_games=min_games,minimum=.90)
     if not picks.empty:
-        picks=picks.head(25).copy()
-        picks["Pick"]=picks["player"]+" · "+picks["side"]+" "+picks["threshold"].astype(str)+"+"
-        picks["Model %"]=(picks["probability"]*100).round(1)
-        picks["Season %"]=(100*picks["hit_rate"]).round(1)
-        # Support forecast data produced before last5_hit_rate was introduced.
-        # Calculate from the already validated current-season game logs when absent.
-        if "last5_hit_rate" not in picks.columns:
-            recent_logs=logs.sort_values(["GAME_DATE","GAME_ID"],ascending=False).groupby("PLAYER_ID").head(5)
-            last5_rates={
-                (str(pid),int(threshold)):float((group["FG3M"]>=threshold).mean())
-                for pid,group in recent_logs.groupby("PLAYER_ID")
-                for threshold in (1,2,3,4)
-            }
-            picks["last5_hit_rate"]=[last5_rates.get((str(pid),int(t)),float("nan"))
-                                      for pid,t in zip(picks["player_id"],picks["threshold"])]
-        picks["Last 5 %"]=(100*pd.to_numeric(picks["last5_hit_rate"],errors="coerce")).round(1)
-        picks["3PA / game"]=picks["projected_pa"].round(1)
-        picks["Team"]=picks["team"]
-        st.dataframe(picks[["Pick","Team","Model %","Season %","Last 5 %","games","3PA / game"]].rename(columns={"games":"Games"}),
-                     hide_index=True,use_container_width=True)
-        st.caption("One highest-probability YES threshold per player; up to 25 displayed. Model % is estimated; Season % and Last 5 % are actual game hit rates. Last 5 % uses the five most recent completed games, not necessarily five calendar days. No live market price or EV is implied.")
+        # The 90% gate selects players; their entire available Kalshi ladder is shown.
+        # Query the standard NBA 3PT series, never escalator/protection contracts.
+        import re
+        import unicodedata
+        from zoneinfo import ZoneInfo
+
+        def normalize_player_name(name):
+            name=unicodedata.normalize("NFKD",str(name))
+            name="".join(ch for ch in name if not unicodedata.combining(ch))
+            return re.sub(r"[^a-z0-9]","",name.casefold())
+
+        market_thresholds={}
+        market_error=None
+        try:
+            all_markets,market_diagnostics=get_targeted_markets()
+            if any(market_diagnostics["status"].eq("ERROR")):
+                market_error="Kalshi returned an incomplete market scan."
+            if not all_markets.empty:
+                today_et=dt.datetime.now(ZoneInfo("America/New_York")).date()
+                date_token=today_et.strftime("%y%b%d").upper()
+                markets_today=all_markets[
+                    all_markets["ticker"].fillna("").str.upper().str.contains(date_token,regex=False)
+                ].copy()
+                for _,market in markets_today.iterrows():
+                    match=re.fullmatch(r"\\s*(.+?):\\s*(\\d+)\\+\\s*threes\\s*",str(market.get("title","")),re.IGNORECASE)
+                    if match:
+                        key=normalize_player_name(match.group(1))
+                        market_thresholds.setdefault(key,set()).add(int(match.group(2)))
+        except Exception as exc:
+            market_error=f"Kalshi thresholds unavailable: {exc}"
+
+        if market_error:
+            st.warning(market_error+" Threshold columns will only appear when market discovery succeeds.")
+        if not market_thresholds:
+            st.info("No verified standard Kalshi NBA 3PT thresholds found for today's games. Player probabilities are withheld rather than presenting unlisted contracts.")
+        else:
+            rows=[]
+            for _,pick in picks.head(25).iterrows():
+                name=normalize_player_name(pick["player"])
+                available=sorted(market_thresholds.get(name,set()))
+                if not available:
+                    continue
+                player_ladder=forecasts[forecasts["player_id"].astype(str)==str(pick["player_id"])]
+                row={"Player":pick["player"],"Team":pick["team"],
+                     "Qualifies at":str(int(pick["threshold"]))+"+",
+                     "Season games":int(pick["games"]),
+                     "3PA / game":round(float(pick["projected_pa"]),1)}
+                for threshold in available:
+                    matching=player_ladder[player_ladder["threshold"]==threshold]
+                    row[f"{threshold}+"]=(round(100*float(matching.iloc[0]["fair_yes"]),1)
+                                           if not matching.empty else float("nan"))
+                rows.append(row)
+            if rows:
+                ladder=pd.DataFrame(rows)
+                ladder=ladder.sort_values(["Player"]).reset_index(drop=True)
+                st.dataframe(ladder,hide_index=True,use_container_width=True)
+                st.caption("Model YES probability (%) at each threshold listed in today's standard Kalshi NBA 3PT markets. Players qualify by having at least one 90%+ model estimate; other thresholds may be below 90%. Blank means no listed or modeled threshold. Model is uncalibrated; no injury adjustment, price verification or positive EV is implied.")
+            else:
+                st.info("Qualifying players have no matching standard Kalshi 3PT contracts in today's scan.")
     else:
         st.info("No YES picks currently meet the 90% model cutoff and minimum-games requirement.")
 
