@@ -1,19 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="Milkball: hand dunking a bitten basketball cookie into milk">
-<rect width="240" height="240" rx="46" fill="#091c3d"/>
-<!-- milk glass -->
-<path d="M52 112L65 201Q120 216 175 201L188 112Z" fill="#f9f8f3" stroke="#95d9f5" stroke-width="6" stroke-linejoin="round"/>
-<path d="M62 139Q120 151 178 139L170 195Q120 207 70 195Z" fill="#f1f4f1"/>
-<!-- bitten basketball cookie -->
-<path d="M76 114C64 101 64 79 76 63C87 46 106 39 124 42C143 44 158 57 164 74C157 75 153 81 156 87C159 92 165 93 169 91C175 102 170 119 158 130C136 149 95 142 76 114Z" fill="#f89b36" stroke="#15223c" stroke-width="5" stroke-linejoin="round"/>
-<path d="M119 43L119 136M74 91L165 91M87 55Q130 90 88 126M149 57Q111 87 152 122" fill="none" stroke="#15223c" stroke-width="4.5" stroke-linecap="round"/>
-<g fill="#663a2b"><circle cx="96" cy="74" r="5"/><circle cx="140" cy="110" r="5"/><circle cx="104" cy="116" r="4"/><circle cx="145" cy="67" r="4"/></g>
-<!-- simple white glove/hand pinching cookie -->
-<path d="M143 13Q155 9 166 18L192 39Q200 47 194 56Q190 62 181 59L158 44L150 68Q147 77 139 76Q131 75 132 65L138 41L120 58Q113 64 106 58Q101 52 108 44L132 20Q137 15 143 13Z" fill="#fffefa" stroke="#15223c" stroke-width="5" stroke-linejoin="round"/>
-<path d="M151 20L139 41" fill="none" stroke="#b5dff3" stroke-width="4" stroke-linecap="round"/>
-<!-- cookie bite crumbs -->
-<g fill="#f89b36"><circle cx="176" cy="78" r="3"/><circle cx="184" cy="89" r="2.5"/><circle cx="175" cy="100" r="2"/></g>
-<!-- milk splash -->
-<path d="M56 116Q42 105 44 91Q59 96 67 110Q68 89 79 85Q84 101 89 112Q107 129 122 116Q140 104 148 113Q163 127 177 110Q186 96 196 94Q196 111 184 120Q171 139 151 126Q133 145 116 134Q98 143 82 128Q67 138 56 116Z" fill="#fffefa" stroke="#fffefa" stroke-width="2"/>
-<path d="M53 116Q120 135 187 116" fill="none" stroke="#8bd9f7" stroke-width="6" stroke-linecap="round"/>
-<g fill="#fffefa"><circle cx="40" cy="105" r="4"/><circle cx="202" cy="105" r="5"/><circle cx="194" cy="84" r="3"/></g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-label="Milkball mascot: white cartoon glove slam-dunking a bitten basketball cookie into a glass of milk">
+<defs><clipPath id="cookieClip"><path d="M96 145 C77 129 70 104 80 82 L92 86 L99 76 L111 82 L120 68 C151 52 187 66 201 95 C220 130 204 164 174 180 C144 196 111 178 96 145Z"/></clipPath></defs>
+<rect width="320" height="320" rx="45" fill="#091b3a"/>
+<circle cx="160" cy="151" r="132" fill="none" stroke="#f49a37" stroke-width="9"/>
+<circle cx="160" cy="151" r="119" fill="#102b4c" stroke="#274a6c" stroke-width="3"/>
+<!-- glass, with a dark silhouette and a clearly defined milk level -->
+<path d="M64 160 L80 263 Q160 286 240 263 L256 160" fill="#e9f7fc" stroke="#08182f" stroke-width="10" stroke-linejoin="round"/>
+<path d="M79 190 Q160 208 241 190 L231 254 Q160 272 89 254Z" fill="#fffdf3"/>
+<path d="M89 251 Q160 270 231 251" fill="none" stroke="#9ddcf1" stroke-width="5"/>
+<!-- cookie: the irregular scalloped notch on the upper left is a large missing bite -->
+<path d="M96 145 C77 129 70 104 80 82 L92 86 L99 76 L111 82 L120 68 C151 52 187 66 201 95 C220 130 204 164 174 180 C144 196 111 178 96 145Z" fill="#f4a23d" stroke="#0b1b35" stroke-width="8" stroke-linejoin="round"/>
+<g clip-path="url(#cookieClip)" fill="none" stroke="#683b29" stroke-width="6" stroke-linecap="round">
+<path d="M145 62 L151 185"/><path d="M81 119 Q145 131 210 115"/><path d="M119 71 Q160 119 111 166"/><path d="M180 77 Q143 121 187 165"/>
+</g>
+<g fill="#70422b"><circle cx="125" cy="99" r="5"/><circle cx="178" cy="144" r="5"/><circle cx="128" cy="151" r="4"/><circle cx="181" cy="99" r="4"/></g>
+<!-- white mascot glove: cuff, palm, curled fingers, and thumb all separately articulated -->
+<path d="M227 12 L289 27 L270 77 L248 88 L220 67Z" fill="#fefdf6" stroke="#0b1b35" stroke-width="9" stroke-linejoin="round"/>
+<path d="M220 49 C210 41 198 46 193 57 L181 81 C176 92 181 100 189 101 C197 102 201 95 208 85 L202 103 C198 115 204 123 214 122 C224 121 227 113 230 105 C228 119 234 127 244 125 C254 123 258 112 260 100 L269 72 C274 52 251 40 237 42Z" fill="#fffefa" stroke="#0b1b35" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M208 85 L220 64 M230 105 L237 73 M251 105 L254 81" fill="none" stroke="#0b1b35" stroke-width="5" stroke-linecap="round"/>
+<path d="M193 57 Q183 55 177 64 L163 88 Q157 100 166 107 Q176 113 184 102 L199 82" fill="#fffefa" stroke="#0b1b35" stroke-width="8" stroke-linejoin="round"/>
+<path d="M178 73 L186 63" stroke="#a8d9ec" stroke-width="4" stroke-linecap="round"/>
+<!-- energetic milk splash in front of the cookie -->
+<path d="M65 164 Q43 151 40 123 Q62 132 79 153 Q77 127 92 118 Q99 144 112 154 Q128 171 153 156 Q176 142 194 158 Q216 171 241 148 Q251 133 267 130 Q266 155 252 166 Q266 158 281 157 Q272 178 247 182 Q225 191 204 176 Q180 193 160 177 Q137 194 111 178 Q86 193 65 164Z" fill="#fffefa" stroke="#0b1b35" stroke-width="6" stroke-linejoin="round"/>
+<path d="M75 174 Q158 201 246 173" fill="none" stroke="#a4dff1" stroke-width="6" stroke-linecap="round"/>
+<g fill="#fffefa"><circle cx="45" cy="109" r="6"/><circle cx="277" cy="113" r="7"/><circle cx="289" cy="145" r="4"/></g>
+<g fill="#f4a23d"><circle cx="76" cy="67" r="5"/><circle cx="65" cy="80" r="3"/><circle cx="91" cy="57" r="3"/></g>
+<!-- nameplate -->
+<path d="M35 267 Q160 285 285 267 L279 307 L41 307Z" fill="#f49a37" stroke="#0b1b35" stroke-width="7" stroke-linejoin="round"/>
+<text x="160" y="298" text-anchor="middle" font-family="DejaVu Sans,Arial,sans-serif" font-weight="900" font-size="36" letter-spacing="-1.5" fill="#0b1b35">MILKBALL</text>
 </svg>
