@@ -316,31 +316,37 @@ with curated_slot:
             st.warning(market_error+" Model estimates are still displayed below.")
         if not market_thresholds:
             st.info("Showing model picks immediately using 1+ through 4+ probabilities. Tap Verify Kalshi listings to check live contracts; until then, thresholds are unverified.")
-        rows=[]
-        for _,pick in picks.head(25).iterrows():
-            name=normalize_player_name(pick["player"])
-            listed=sorted(market_thresholds.get(name,set()))
-            # When the market feed is missing, keep the independent model usable.
-            available=listed if listed else [1,2,3,4]
-            player_ladder=forecasts[forecasts["player_id"].astype(str)==str(pick["player_id"])]
-            row={"Player":pick["player"],"Team":pick["team"],
-                 "Best qualifying":"—",
-                 "Kalshi listing":"Confirmed" if listed else "Unverified",
-                 "Games":int(pick["games"]),
-                 "3PA / game":round(float(pick["projected_pa"]),1)}
-            for threshold in available:
-                matching=player_ladder[player_ladder["threshold"]==threshold]
-                row[f"{threshold}+"]=(round(100*float(matching.iloc[0]["fair_yes"]),1)
-                                       if not matching.empty else float("nan"))
-            qualified=[t for t in available if pd.notna(row.get(f"{t}+")) and row[f"{t}"]>=confidence_floor]
-            if qualified:
-                best_t=max(qualified)
-                row["Best qualifying"]=f'{best_t}+ ({row[f"{best_t}"]:.1f}%)'
-            rows.append(row)
-        ladder=pd.DataFrame(rows)
-        if not ladder.empty:
-            st.dataframe(ladder,hide_index=True,use_container_width=True)
-            st.caption("All threshold cells show independent model YES probability (%), NOT Kalshi market odds. Players qualify at the selected confidence floor. Best qualifying is the highest displayed threshold clearing that floor, not necessarily best value. Confirmed rows use standard Kalshi 3PT listings for today's date; Unverified rows show modeled 1+ to 4+ as fallback. No escalator or protection contracts. Forecasts are uncalibrated, not injury-adjusted, and not price-verified.")
+        # Build the table directly from model forecasts. Avoid per-row
+        # rendering errors and keep the probabilities visible even without Kalshi.
+        selected_ids=set(picks.head(25)["player_id"].astype(str))
+        visible=forecasts[forecasts["player_id"].astype(str).isin(selected_ids)].copy()
+        visible=visible[visible["threshold"].between(1,4)]
+        visible["Model YES %"]=(visible["fair_yes"]*100).round(1)
+        probability_table=visible.pivot_table(
+            index=["player_id","player","team","games","projected_pa"],
+            columns="threshold",values="Model YES %",aggfunc="first"
+        ).reset_index()
+        probability_table.columns=[str(c)+"+" if isinstance(c,int) else c for c in probability_table.columns]
+        probability_table=probability_table.rename(columns={
+            "player":"Player","team":"Team","games":"Games",
+            "projected_pa":"3PA / game"})
+        threshold_columns=[str(t)+"+" for t in (1,2,3,4)]
+        for column in threshold_columns:
+            if column not in probability_table.columns:
+                probability_table[column]=float("nan")
+        def qualifying_label(row):
+            valid=[t for t in (1,2,3,4)
+                   if pd.notna(row[str(t)+"+"]) and row[str(t)+"+"]>=confidence_floor]
+            if not valid:return "—"
+            t=max(valid)
+            return f"{t}+ ({row[str(t)+'+']:.1f}%)"
+        probability_table["Best qualifying"]=probability_table.apply(qualifying_label,axis=1)
+        probability_table["Kalshi listing"]=probability_table["Player"].map(
+            lambda name:"Confirmed" if market_thresholds.get(normalize_player_name(name)) else "Unverified")
+        probability_table=probability_table.sort_values(["1+","Games"],ascending=False)
+        display_columns=["Player","Team","Best qualifying","Kalshi listing","Games","3PA / game"]+threshold_columns
+        st.dataframe(probability_table[display_columns],hide_index=True,use_container_width=True)
+        st.caption("Best qualifying is the highest modeled 1+ to 4+ threshold meeting your confidence floor. These are uncalibrated model probabilities, not market prices. Unverified thresholds may not be listed on Kalshi.")
     else:
         st.info("No YES picks currently meet the selected confidence cutoff and minimum-games requirement.")
 
