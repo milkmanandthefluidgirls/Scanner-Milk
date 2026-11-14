@@ -1,24 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-label="Basketball cookie with a bite dipping into a glass of milk">
-<defs>
-<clipPath id="cookie"><path d="M105 174 A88 88 0 1 1 248 113 Q235 105 226 116 Q217 126 203 119 Q192 112 196 97 Q181 91 171 102 Q158 116 145 107 Q133 100 136 85 A88 88 0 0 0 105 174Z"/></clipPath>
-</defs>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-label="Bitten basketball cookie dunking into a glass of milk">
+<defs><clipPath id="round"><path d="M201 54 A88 88 0 1 0 247 120 Q231 119 226 108 Q219 98 209 102 Q195 107 191 94 Q187 83 200 76 Q208 69 201 54 Z"/></clipPath></defs>
 <rect width="320" height="320" rx="42" fill="#091b3a"/>
-<circle cx="160" cy="157" r="135" fill="#132c4c" stroke="#f5a03b" stroke-width="8"/>
-<circle cx="160" cy="157" r="120" fill="none" stroke="#315573" stroke-width="3"/>
-<!-- round cookie, rotated into milk, with a distinct scalloped bite -->
-<g transform="rotate(-18 166 139)">
-<path d="M105 174 A88 88 0 1 1 248 113 Q235 105 226 116 Q217 126 203 119 Q192 112 196 97 Q181 91 171 102 Q158 116 145 107 Q133 100 136 85 A88 88 0 0 0 105 174Z" fill="#f6a13b" stroke="#0a1a32" stroke-width="7" stroke-linejoin="round"/>
-<g clip-path="url(#cookie)" fill="none" stroke="#75432d" stroke-width="6" stroke-linecap="round">
-<path d="M160 44 Q172 132 170 222"/><path d="M78 143 Q170 156 252 143"/><path d="M111 75 Q181 140 113 201"/><path d="M218 71 Q150 143 218 202"/>
+<circle cx="160" cy="155" r="133" fill="#122d4c" stroke="#f4a03b" stroke-width="7"/>
+<circle cx="160" cy="155" r="120" fill="none" stroke="#31516b" stroke-width="3"/>
+<g>
+<path d="M201 54 A88 88 0 1 0 247 120 Q231 119 226 108 Q219 98 209 102 Q195 107 191 94 Q187 83 200 76 Q208 69 201 54 Z" fill="#f5a23e" stroke="#111e31" stroke-width="8" stroke-linejoin="round"/>
+<g clip-path="url(#round)" stroke="#75442d" stroke-width="6" fill="none" stroke-linecap="round"><path d="M160 42 V222"/><path d="M70 132 H250"/><path d="M112 57 Q196 132 112 207"/><path d="M208 57 Q124 132 208 207"/></g>
+<g fill="#7a4a31"><circle cx="125" cy="97" r="5"/><circle cx="194" cy="160" r="5"/><circle cx="137" cy="178" r="4"/></g>
 </g>
-<g fill="#855031"><circle cx="120" cy="137" r="5"/><circle cx="190" cy="177" r="5"/><circle cx="206" cy="74" r="4"/></g>
-</g>
-<!-- glass is tall and tapered, with the cookie visibly descending into it -->
-<path d="M74 169 L88 275 Q160 293 232 275 L246 169" fill="#e8f6fa" stroke="#0a1a32" stroke-width="8" stroke-linejoin="round"/>
-<path d="M82 188 Q160 202 238 188 L227 269 Q160 284 93 269Z" fill="#fffdf6"/>
-<path d="M94 266 Q160 281 226 266" fill="none" stroke="#9adcf1" stroke-width="5" stroke-linecap="round"/>
-<!-- splash foreground masks lower edge of cookie; lively but not oversized -->
-<path d="M76 173 Q61 161 57 144 Q75 149 88 163 Q87 146 98 140 Q104 157 116 166 Q135 180 153 168 Q167 158 182 169 Q199 183 218 165 Q229 151 243 149 Q242 165 232 175 Q250 169 264 157 Q261 180 239 189 Q218 198 200 182 Q181 196 163 184 Q143 196 125 183 Q99 198 76 173Z" fill="#fffefa" stroke="#0a1a32" stroke-width="6" stroke-linejoin="round"/>
-<path d="M86 188 Q160 207 234 188" fill="none" stroke="#9bdff1" stroke-width="5" stroke-linecap="round"/>
-<g fill="#fffefa"><circle cx="57" cy="127" r="5"/><circle cx="267" cy="140" r="5"/><circle cx="255" cy="116" r="3"/></g>
+<path d="M70 170 L84 271 Q160 292 236 271 L250 170" fill="#c9e9f3" stroke="#091b32" stroke-width="8" stroke-linejoin="round"/>
+<path d="M80 184 Q160 197 240 184 L229 263 Q160 282 91 263 Z" fill="#fffdf5"/>
+<path d="M91 260 Q160 279 229 260" stroke="#9ad8e9" stroke-width="5" fill="none" stroke-linecap="round"/>
+<path d="M75 171 Q61 160 57 143 Q78 151 91 166 Q91 150 102 146 Q107 162 123 172 Q145 181 162 169 Q180 158 197 172 Q216 182 236 161 Q247 151 259 148 Q254 166 245 173 Q260 172 268 164 Q262 184 239 191 Q218 198 198 183 Q180 195 161 184 Q143 195 122 183 Q98 197 75 171Z" fill="#fffdf5" stroke="#091b32" stroke-width="5" stroke-linejoin="round"/>
+<path d="M83 187 Q160 207 239 187" fill="none" stroke="#a2dce9" stroke-width="5" stroke-linecap="round"/>
+<circle cx="59" cy="132" r="5" fill="#fffdf5"/><circle cx="265" cy="135" r="5" fill="#fffdf5"/>
 </svg>
