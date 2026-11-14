@@ -33,6 +33,9 @@ def load_predictions(path=PREDICTIONS):
 def settle_predictions(predictions, logs):
     if predictions.empty or logs.empty:return predictions
     predictions=predictions.copy()
+    # CSVs with blank correctness values are inferred as float64 by pandas.
+    # Use object dtype so Boolean settlement values can be assigned safely.
+    predictions["correct"]=predictions["correct"].astype(object)
     logs=logs.copy()
     logs["GAME_DATE"]=pd.to_datetime(logs["GAME_DATE"]).dt.strftime("%Y-%m-%d")
     # A player with no completed boxscore is NOT graded as a loss or win.
