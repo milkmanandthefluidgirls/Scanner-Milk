@@ -285,8 +285,15 @@ with curated_slot:
 
         market_thresholds={}
         market_error=None
+        # Do not block the picks table on a slow Kalshi network scan.
+        verify_listings=st.button("Verify Kalshi listings",key="verify_picks_listings")
         try:
-            all_markets,market_diagnostics=get_targeted_markets()
+            if verify_listings:
+                with st.spinner("Checking Kalshi listings..."):
+                    all_markets,market_diagnostics=get_targeted_markets()
+            else:
+                all_markets=pd.DataFrame()
+                market_diagnostics=pd.DataFrame()
             if not market_diagnostics.empty and market_diagnostics["status"].eq("ERROR").any():
                 market_error="Kalshi returned an incomplete market scan."
             if not all_markets.empty:
@@ -308,7 +315,7 @@ with curated_slot:
         if market_error:
             st.warning(market_error+" Model estimates are still displayed below.")
         if not market_thresholds:
-            st.info("No matching standard Kalshi NBA 3PT contracts confirmed for today's games. Showing modeled 1+ through 4+ probabilities as a fallback; these thresholds are NOT verified as listed.")
+            st.info("Showing model picks immediately using 1+ through 4+ probabilities. Tap Verify Kalshi listings to check live contracts; until then, thresholds are unverified.")
         rows=[]
         for _,pick in picks.head(25).iterrows():
             name=normalize_player_name(pick["player"])
