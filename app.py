@@ -266,9 +266,11 @@ if forecasts.empty:
     st.stop()
 # Curated model estimates and prospective results directly beneath matchups.
 with curated_slot:
-    st.subheader("Model picks · YES 90%+")
-    st.caption("YES to made threes only · 90%+ model probability · Current season · Not price-verified or injury-adjusted")
-    picks=select_candidates(forecasts,min_games=min_games,minimum=.90)
+    confidence_floor=st.slider("Minimum model confidence (%)",65,95,80,5,key="milkball_confidence_floor")
+    minimum_probability=confidence_floor/100
+    st.subheader(f"Model picks · YES {confidence_floor}%+")
+    st.caption("YES to made threes only · Adjustable confidence floor · Current season · Not price-verified or injury-adjusted")
+    picks=select_candidates(forecasts,min_games=min_games,minimum=minimum_probability)
     if not picks.empty:
         # The 90% gate selects players; their entire available Kalshi ladder is shown.
         # Query the standard NBA 3PT series, never escalator/protection contracts.
@@ -315,7 +317,7 @@ with curated_slot:
             available=listed if listed else [1,2,3,4]
             player_ladder=forecasts[forecasts["player_id"].astype(str)==str(pick["player_id"])]
             row={"Player":pick["player"],"Team":pick["team"],
-                 "90%+ at":str(int(pick["threshold"]))+"+",
+                 "Best qualifying":"—",
                  "Kalshi listing":"Confirmed" if listed else "Unverified",
                  "Games":int(pick["games"]),
                  "3PA / game":round(float(pick["projected_pa"]),1)}
@@ -323,17 +325,21 @@ with curated_slot:
                 matching=player_ladder[player_ladder["threshold"]==threshold]
                 row[f"{threshold}+"]=(round(100*float(matching.iloc[0]["fair_yes"]),1)
                                        if not matching.empty else float("nan"))
+            qualified=[t for t in available if pd.notna(row.get(f"{t}+")) and row[f"{t}"]>=confidence_floor]
+            if qualified:
+                best_t=max(qualified)
+                row["Best qualifying"]=f'{best_t}+ ({row[f"{best_t}"]:.1f}%)'
             rows.append(row)
         ladder=pd.DataFrame(rows)
         if not ladder.empty:
             st.dataframe(ladder,hide_index=True,use_container_width=True)
-            st.caption("All threshold cells show independent model YES probability (%), NOT Kalshi market odds. Players qualify at 90%+ for at least one threshold. Confirmed rows use standard Kalshi 3PT listings for today's date; Unverified rows show modeled 1+ to 4+ as fallback. No escalator or protection contracts. Forecasts are uncalibrated, not injury-adjusted, and not price-verified.")
+            st.caption("All threshold cells show independent model YES probability (%), NOT Kalshi market odds. Players qualify at the selected confidence floor. Best qualifying is the highest displayed threshold clearing that floor, not necessarily best value. Confirmed rows use standard Kalshi 3PT listings for today's date; Unverified rows show modeled 1+ to 4+ as fallback. No escalator or protection contracts. Forecasts are uncalibrated, not injury-adjusted, and not price-verified.")
     else:
-        st.info("No YES picks currently meet the 90% model cutoff and minimum-games requirement.")
+        st.info("No YES picks currently meet the selected confidence cutoff and minimum-games requirement.")
 
     # Explain why every player on today's scheduled teams did or did not qualify.
     with st.expander("Player eligibility audit · all matchups", expanded=False):
-        st.caption("Season-data audit for every scheduled team. Best YES probability is the highest across 1+ to 4+ made threes. This is not a confirmed active roster or injury report.")
+        st.caption("Season-data audit for every scheduled team. Best qualifying is the highest 1+ to 4+ threshold meeting the selected confidence floor. This is not a confirmed active roster or injury report.")
         audit_rows=[]
         today_games=schedule[["away","home"]].drop_duplicates() if not schedule.empty else pd.DataFrame()
         if not today_games.empty:
@@ -345,7 +351,7 @@ with curated_slot:
                 for team_code in (matchup["away"],matchup["home"]):
                     team_logs=source_logs[source_logs["TEAM_ABBREVIATION"]==team_code]
                     if team_logs.empty:
-                        audit_rows.append({"Game":matchup_label,"Team":team_code,"Player":"No player logs","Games":0,"Proj 3PA":None,"Best YES %":None,"Best threshold":"—","Status":"MISSING TEAM DATA"})
+                        audit_rows.append({"Game":matchup_label,"Team":team_code,"Player":"No player logs","Games":0,"Proj 3PA":None,"Best YES %":None,"Best qualifying":"—","Status":"MISSING TEAM DATA"})
                         continue
                     for player_id,history in team_logs.groupby("PLAYER_ID"):
                         history=history.sort_values("GAME_DATE",ascending=False)
@@ -357,22 +363,24 @@ with curated_slot:
                         projected=.65*season_pa+.35*recent_pa
                         player_fc=forecasts[forecasts["player_id"].astype(str)==player_id]
                         eligible_fc=player_fc[player_fc["threshold"].between(1,4)] if not player_fc.empty else player_fc
+                        qualified_fc=eligible_fc[eligible_fc["fair_yes"]>=minimum_probability]
+                        best_qualified=qualified_fc.sort_values("threshold",ascending=False).head(1)
                         best=eligible_fc.sort_values("fair_yes",ascending=False).head(1)
                         best_pct=round(float(best.iloc[0]["fair_yes"])*100,1) if not best.empty else None
-                        best_threshold=f'{int(best.iloc[0]["threshold"])}+' if not best.empty else "—"
+                        best_threshold=(f'{int(best_qualified.iloc[0]["threshold"])}+ ({float(best_qualified.iloc[0]["fair_yes"])*100:.1f}%)' if not best_qualified.empty else "—")
                         if n<min_games:
                             status=f'INSUFFICIENT GAMES ({n}/{min_games})'
                         elif projected<1.5:
                             status="LOW 3PA VOLUME"
                         elif best_pct is None:
                             status="NO MODEL FORECAST"
-                        elif best_pct>=90:
-                            status="QUALIFIES 90%+"
+                        elif best_pct>=confidence_floor:
+                            status=f"QUALIFIES {confidence_floor}%+"
                         else:
-                            status="BELOW 90%"
+                            status=f"BELOW {confidence_floor}%"
                         audit_rows.append({"Game":matchup_label,"Team":team_code,"Player":name,
                                            "Games":n,"Proj 3PA":round(projected,1),
-                                           "Best YES %":best_pct,"Best threshold":best_threshold,
+                                           "Best YES %":best_pct,"Best qualifying":best_threshold,
                                            "Status":status})
             audit=pd.DataFrame(audit_rows)
             game_options=list(dict.fromkeys(audit["Game"].tolist()))
