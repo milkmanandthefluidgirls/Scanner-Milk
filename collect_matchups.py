@@ -9,7 +9,7 @@ import json
 import time
 from pathlib import Path
 import pandas as pd
-from nba_api.stats.endpoints import boxscoreadvancedv3
+from nba_api.stats.endpoints import boxscoreadvancedv3, scoreboardv3
 
 ROOT=Path(__file__).parent
 LOGS=ROOT/"data/nba_2026_27_regular_season_3pt.csv"
@@ -22,14 +22,29 @@ def collect():
     completed=set(existing.GAME_ID.astype(str)) if not existing.empty else set()
     rows=[]
     failures=[]
+    date_cache={}
+    def nba_game_id(date,teams):
+        if date not in date_cache:
+            board=scoreboardv3.ScoreboardV3(game_date=date,timeout=20).get_dict()
+            date_cache[date]=board.get("scoreboard",{}).get("games",[])
+        matches=[]
+        for game in date_cache[date]:
+            home=game.get("homeTeam",{}).get("teamTricode")
+            away=game.get("awayTeam",{}).get("teamTricode")
+            if {home,away}==set(teams):
+                matches.append(str(game["gameId"]))
+        if len(matches)!=1:
+            raise ValueError("Unable to map ESPN game ID to NBA game ID")
+        return matches[0]
     for gid,g in logs.groupby("GAME_ID",sort=False):
         gid=str(gid)
         if gid in completed:continue
         teams=list(g.TEAM_ABBREVIATION.unique())
         if len(teams)!=2:continue
         try:
+            nba_id=nba_game_id(str(g.GAME_DATE.iloc[0]),teams)
             result=boxscoreadvancedv3.BoxScoreAdvancedV3(
-                game_id=gid.zfill(10),timeout=20)
+                game_id=nba_id,timeout=20)
             payload=result.get_dict()
             data=payload.get("boxScoreAdvanced",{})
             team_rows=data.get("homeTeam"),data.get("awayTeam")
@@ -46,7 +61,7 @@ def collect():
                 opp=g[g.TEAM_ABBREVIATION==opponent]
                 rows.append(dict(GAME_ID=gid,GAME_DATE=str(g.GAME_DATE.iloc[0]),
                     TEAM_ABBREVIATION=abbrev,OPPONENT=opponent,
-                    PACE=float(pace),OPP_FG3A=int(opp.FG3A.sum()),
+                    NBA_GAME_ID=nba_id,PACE=float(pace),OPP_FG3A=int(opp.FG3A.sum()),
                     OPP_FG3M=int(opp.FG3M.sum()),
                     SOURCE="nba_boxscoreadvancedv3"))
             print("Fetched",gid,flush=True)
