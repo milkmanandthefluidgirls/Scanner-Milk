@@ -431,6 +431,33 @@ with curated_slot:
         a.metric("Accuracy",f"{correct.mean()*100:.1f}%")
         b.metric("Correct",f"{int(correct.sum())} / {len(correct)}")
         d.metric("Pending",int(tracked["correct"].isna().sum()))
+        # Mutually exclusive confidence bands; the 100% upper bound belongs to 90%+.
+        st.markdown("#### Accuracy by model confidence")
+        st.caption("Each saved prediction belongs to one tier. Only settled, pregame predictions are counted; small samples can be misleading.")
+        tiered=settled.copy()
+        tiered["probability"]=pd.to_numeric(tiered["probability"],errors="coerce")
+        tiered=tiered[tiered["probability"].between(0,1)].copy()
+        tiered["correct_flag"]=tiered["correct"].astype(str).str.lower().eq("true")
+        tier_edges=[0,.50,.60,.70,.80,.90,1.0000001]
+        tier_labels=["Below 50%","50–59%","60–69%","70–79%","80–89%","90%+"]
+        tiered["Confidence tier"]=pd.cut(tiered["probability"],bins=tier_edges,
+            labels=tier_labels,right=False,include_lowest=True)
+        tier_summary=tiered.groupby("Confidence tier",observed=False).agg(
+            Correct=("correct_flag","sum"),Total=("correct_flag","size"),
+            Predicted=("probability","mean")).reset_index()
+        tier_summary=tier_summary[tier_summary["Total"]>0].copy()
+        if not tier_summary.empty:
+            tier_summary["Accuracy"]=(tier_summary["Correct"]/tier_summary["Total"]*100).round(1)
+            tier_summary["Avg model %"]=(tier_summary["Predicted"]*100).round(1)
+            tier_summary["Difference (pp)"]=(tier_summary["Accuracy"]-tier_summary["Avg model %"]).round(1)
+            tier_summary["Confidence tier"]=tier_summary["Confidence tier"].astype(str)
+            tier_summary=tier_summary.iloc[::-1]
+            st.dataframe(tier_summary[["Confidence tier","Correct","Total","Accuracy",
+                "Avg model %","Difference (pp)"]],hide_index=True,use_container_width=True)
+            st.caption("Difference (pp) = actual accuracy minus average predicted probability. Positive means outcomes exceeded forecasts.")
+        else:
+            st.info("No settled predictions with valid probabilities in this period.")
+        st.caption("Earlier snapshots saved only 90%+ predictions. Lower tiers will populate after new 70%+ pregame snapshots settle.")
         daily=summarize(settled)
         st.dataframe(daily.sort_values("Date",ascending=False),hide_index=True,use_container_width=True)
         st.line_chart(daily.set_index("Date")["Accuracy"])
