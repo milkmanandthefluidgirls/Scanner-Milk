@@ -159,6 +159,9 @@ except Exception as e:
 # Reserve this spot so curated signals appear immediately after tonight's games.
 
 
+# Render NO model picks at the top once their data is calculated.
+no_picks_slot=st.container()
+
 st.subheader("Season data")
 st.caption("Current season ONLY. Saved game logs are updated by GitHub Actions and persist across dashboard restarts.")
 logs=None
@@ -244,19 +247,69 @@ with st.expander("Data validation details"):
     st.json(quality)
 if quality.get("errors"):
     st.stop()
-st.subheader("Historical hit rates")
-st.caption("Observed regular-season results only; not predicted probabilities. Last-5 and last-10 samples use actual games played.")
-hit_rates=season_hit_rates(logs,min_games=min_games)
-if not schedule.empty and not hit_rates.empty:
-    today_teams=set(schedule["away"])|set(schedule["home"])
-    hit_rates=hit_rates[hit_rates["team"].isin(today_teams)]
-if not hit_rates.empty:
-    selected_threshold=st.selectbox("Made threes threshold",[1,2,3,4],index=1,format_func=lambda v:f"{v}+ threes")
-    rate_view=hit_rates[hit_rates["threshold"]==selected_threshold].sort_values(["season_hit_rate","games"],ascending=False)
-    st.dataframe(rate_view,hide_index=True,use_container_width=True)
-    st.download_button("Download current-season hit rates",hit_rates.to_csv(index=False),"nba_2026_27_3pt_hit_rates.csv",key="download_hit_rates")
+st.subheader("Historical NO hit rates — all player props")
+st.caption("Actual regular-season box scores, not model forecasts. NO hit rate means the player finished BELOW the selected threshold.")
+history_prop_path=Path("data/nba_2026_27_player_props.csv")
+history_prop_logs=None
+if history_prop_path.exists():
+    try:
+        history_prop_logs=pd.read_csv(history_prop_path,dtype={"PLAYER_ID":str,"GAME_ID":str})
+        needed={"PLAYER_ID","PLAYER_NAME","TEAM_ABBREVIATION","GAME_DATE","PTS","REB","AST","STL","BLK","FG3M"}
+        if not needed.issubset(history_prop_logs.columns):
+            raise ValueError("Saved prop logs lack required columns")
+    except Exception as exc:
+        st.warning(f"Additional player-prop history unavailable: {exc}")
+        history_prop_logs=None
+stat_labels={"Three-pointers":"FG3M","Points":"PTS","Rebounds":"REB",
+             "Assists":"AST","Steals":"STL","Blocks":"BLK"}
+stat_thresholds={"FG3M":[1,2,3,4,5,6],"PTS":[10,15,20,25,30,35],
+                 "REB":[4,6,8,10,12,14],"AST":[2,4,6,8,10,12],
+                 "STL":[1,2,3,4],"BLK":[1,2,3,4]}
+available_stats=["Three-pointers"]+([k for k in stat_labels if k!="Three-pointers"] if history_prop_logs is not None else [])
+if history_prop_logs is None:
+    st.info("Points, rebounds, assists, steals and blocks appear after the player-prop history backfill completes.")
+hcol1,hcol2,hcol3=st.columns(3)
+with hcol1:
+    history_stat=st.selectbox("Historical stat",available_stats,key="historical_no_stat")
+history_key=stat_labels[history_stat]
+with hcol2:
+    history_threshold=st.selectbox("NO on threshold",stat_thresholds[history_key],
+                                  index=min(1,len(stat_thresholds[history_key])-1),
+                                  format_func=lambda v:f"NO {v}+",key="historical_no_threshold")
+with hcol3:
+    history_team_scope=st.checkbox("Tonight's teams only",value=True,key="history_tonight_only")
+history_source=history_prop_logs if history_prop_logs is not None else logs
+history_rows=[]
+if history_key in history_source.columns:
+    source=history_source.copy()
+    source["GAME_DATE"]=pd.to_datetime(source["GAME_DATE"],errors="coerce")
+    source=source[source["GAME_DATE"].notna()]
+    source=source[source["GAME_DATE"].dt.date<dt.datetime.now(
+        __import__("zoneinfo").ZoneInfo("America/New_York")).date()]
+    for player_id,g in source.groupby("PLAYER_ID"):
+        g=g.sort_values("GAME_DATE")
+        values=pd.to_numeric(g[history_key],errors="coerce").dropna()
+        if len(values)<min_games:continue
+        latest=g.iloc[-1]
+        team=str(latest["TEAM_ABBREVIATION"])
+        if history_team_scope and not schedule.empty and team not in (set(schedule["away"])|set(schedule["home"])):
+            continue
+        last5=values.tail(5)
+        last10=values.tail(10)
+        history_rows.append({"Player":str(latest["PLAYER_NAME"]),"Team":team,
+            "Games":len(values),"NO threshold":f"{history_threshold}+",
+            "Season NO %":round(float((values<history_threshold).mean())*100,1),
+            "Last 5 NO %":round(float((last5<history_threshold).mean())*100,1),
+            "Last 10 NO %":round(float((last10<history_threshold).mean())*100,1),
+            "Season avg":round(float(values.mean()),2)})
+history_table=pd.DataFrame(history_rows)
+if history_table.empty:
+    st.info("No player history matches the selected stat, threshold and minimum games.")
 else:
-    st.info("No players match the minimum games and today's teams.")
+    history_table=history_table.sort_values(["Season NO %","Games"],ascending=[False,False])
+    st.dataframe(history_table,hide_index=True,use_container_width=True)
+    st.download_button("Download historical NO hit rates",history_table.to_csv(index=False),
+        "milkball_historical_no_hit_rates.csv",key="download_historical_no")
 logs=logs.copy()
 logs["GAME_DATE"]=pd.to_datetime(logs["GAME_DATE"],errors="coerce")
 logs=logs[logs["GAME_DATE"].dt.date < dt.datetime.now(dt.timezone(dt.timedelta(hours=-5))).date()]
@@ -356,93 +409,94 @@ else:
         st.caption(f"{int(tracked['correct'].isna().sum())} predictions are awaiting completed player boxscores.")
 st.caption("Tracking starts with saved prospective predictions; it does not backfill hypothetical historical picks. Missing player boxscores remain ungraded.")
 
-st.subheader("Milkball NO Scanner — Research Preview")
-st.caption("NO-only predictions. Phase 1 uses real saved three-point logs; points, rebounds, assists, steals, and blocks will be added only after their historical data and backtests are available.")
-no_col1,no_col2,no_col3=st.columns(3)
-with no_col1:
-    no_floor=st.slider("Minimum NO confidence",50,99,80,5,key="no_floor")
-with no_col2:
-    no_threshold=st.selectbox("Minimum 3PT threshold",[1,2,3,4,5,6],index=1,key="no_threshold")
-with no_col3:
-    no_games=st.slider("Minimum player games",5,25,8,key="no_games")
-no_candidates=build_no_candidates(forecasts,min_probability=no_floor/100,
-    min_games=no_games,min_threshold=no_threshold)
-if no_candidates.empty:
-    st.info("No NO candidates meet these filters. Lower the confidence floor or minimum threshold to explore.")
-else:
-    st.metric("NO candidates (unpriced)",len(no_candidates))
-    st.dataframe(no_candidates,hide_index=True,use_container_width=True)
-    st.download_button("Download NO research candidates",no_candidates.to_csv(index=False),
-        "milkball_no_research.csv",key="no_download")
-st.caption("No Kalshi contract prices are attached to this table. High NO probability alone does not establish positive expected value; NO signals are not approved trades.")
-with st.expander("Upcoming NO prop categories"):
-    st.write("Points · Rebounds · Assists · Steals · Blocks — awaiting reliable player-game logs and separate chronological validation. No probabilities are fabricated for missing categories.")
+with no_picks_slot:
+    st.subheader("Milkball NO Scanner — Research Preview")
+    st.caption("NO-only predictions. Phase 1 uses real saved three-point logs; points, rebounds, assists, steals, and blocks will be added only after their historical data and backtests are available.")
+    no_col1,no_col2,no_col3=st.columns(3)
+    with no_col1:
+        no_floor=st.slider("Minimum NO confidence",50,99,80,5,key="no_floor")
+    with no_col2:
+        no_threshold=st.selectbox("Minimum 3PT threshold",[1,2,3,4,5,6],index=1,key="no_threshold")
+    with no_col3:
+        no_games=st.slider("Minimum player games",5,25,8,key="no_games")
+    no_candidates=build_no_candidates(forecasts,min_probability=no_floor/100,
+        min_games=no_games,min_threshold=no_threshold)
+    if no_candidates.empty:
+        st.info("No NO candidates meet these filters. Lower the confidence floor or minimum threshold to explore.")
+    else:
+        st.metric("NO candidates (unpriced)",len(no_candidates))
+        st.dataframe(no_candidates,hide_index=True,use_container_width=True)
+        st.download_button("Download NO research candidates",no_candidates.to_csv(index=False),
+            "milkball_no_research.csv",key="no_download")
+    st.caption("No Kalshi contract prices are attached to this table. High NO probability alone does not establish positive expected value; NO signals are not approved trades.")
+    with st.expander("Upcoming NO prop categories"):
+        st.write("Points · Rebounds · Assists · Steals · Blocks — awaiting reliable player-game logs and separate chronological validation. No probabilities are fabricated for missing categories.")
 
-st.markdown("#### NO Scanner — Points, Rebounds, Assists, Steals & Blocks")
-st.caption("Experimental count-stat distributions. No Kalshi prices or verified positive edges; do not treat these as approved trades.")
-prop_data_path=Path("data/nba_2026_27_player_props.csv")
-if not prop_data_path.exists():
-    st.info("Player prop history is not collected yet. The scheduled GitHub Actions workflow will backfill completed box scores; you can also run it manually.")
-else:
-    try:
-        prop_logs=pd.read_csv(prop_data_path,dtype={"PLAYER_ID":str,"GAME_ID":str})
-        required_props={"PLAYER_ID","GAME_DATE","GAME_ID","PTS","REB","AST","STL","BLK"}
-        if not required_props.issubset(prop_logs.columns):
-            raise ValueError("Player prop dataset is missing required statistics")
-        prop_logs=prop_logs[prop_logs["GAME_DATE"].astype(str)<dt.datetime.now(
-            __import__("zoneinfo").ZoneInfo("America/New_York")).date().isoformat()]
-        st.caption(f"Saved player-game rows: {len(prop_logs):,}. Data source: completed ESPN box scores.")
-        prop_predictions=forecast_props(prop_logs,min_games=no_games)
-        if prop_predictions.empty:
-            st.info("Not enough complete player-game history to forecast these props.")
-        else:
-            pcol1,pcol2=st.columns(2)
-            with pcol1:
-                selected_props=st.multiselect("NO stat categories",
-                    ["PTS","REB","AST","STL","BLK"],
-                    default=["PTS","REB","AST"],key="no_stat_categories")
-            with pcol2:
-                no_min=st.slider("NO confidence floor (%)",50,99,80,5,key="no_prop_floor")
-            filtered=prop_predictions[
-                prop_predictions["prop"].isin(selected_props)&
-                (prop_predictions["model_no_pct"]>=no_min)].copy()
-            if filtered.empty:
-                st.info("No NO candidates match these settings.")
+    st.markdown("#### NO Scanner — Points, Rebounds, Assists, Steals & Blocks")
+    st.caption("Experimental count-stat distributions. No Kalshi prices or verified positive edges; do not treat these as approved trades.")
+    prop_data_path=Path("data/nba_2026_27_player_props.csv")
+    if not prop_data_path.exists():
+        st.info("Player prop history is not collected yet. The scheduled GitHub Actions workflow will backfill completed box scores; you can also run it manually.")
+    else:
+        try:
+            prop_logs=pd.read_csv(prop_data_path,dtype={"PLAYER_ID":str,"GAME_ID":str})
+            required_props={"PLAYER_ID","GAME_DATE","GAME_ID","PTS","REB","AST","STL","BLK"}
+            if not required_props.issubset(prop_logs.columns):
+                raise ValueError("Player prop dataset is missing required statistics")
+            prop_logs=prop_logs[prop_logs["GAME_DATE"].astype(str)<dt.datetime.now(
+                __import__("zoneinfo").ZoneInfo("America/New_York")).date().isoformat()]
+            st.caption(f"Saved player-game rows: {len(prop_logs):,}. Data source: completed ESPN box scores.")
+            prop_predictions=forecast_props(prop_logs,min_games=no_games)
+            if prop_predictions.empty:
+                st.info("Not enough complete player-game history to forecast these props.")
             else:
-                st.metric("Multi-stat NO research candidates",len(filtered))
-                st.dataframe(filtered.sort_values("model_no_pct",ascending=False),
-                    hide_index=True,use_container_width=True)
-                st.download_button("Download multi-stat NO research",
-                    filtered.to_csv(index=False),"milkball_multi_stat_no.csv",key="multi_no_download")
-            if st.button("Verify Kalshi NO picks",key="verify_kalshi_no"):
-                with st.spinner("Checking exact NBA prop contracts and available NO orderbooks..."):
-                    try:
-                        verified,diagnostics=verify_candidates(filtered.head(100),max_quotes=50)
-                        st.session_state["verified_no"]=verified
-                        st.session_state["verified_no_diagnostics"]=diagnostics
-                    except Exception as exc:
-                        st.error(f"Kalshi verification failed: {exc}")
-            if "verified_no" in st.session_state:
-                st.markdown("##### Verified Kalshi NO contracts")
-                st.dataframe(st.session_state["verified_no"],hide_index=True,use_container_width=True)
-                diagnostics=st.session_state.get("verified_no_diagnostics")
-                if diagnostics is not None and not diagnostics.empty:
-                    with st.expander("Market verification diagnostics"):
-                        st.dataframe(diagnostics,hide_index=True,use_container_width=True)
-                st.caption("Exact player, prop, threshold and today's ticker required. Edge excludes fees and model uncertainty. Unmatched contracts are NOT verified.")
-            with st.expander("Historical walk-forward calibration (research)"):
-                st.caption("Uses only games preceding each target game. No market-price or fee data; Brier scores measure probability quality, not profit.")
-                if st.button("Run historical NO backtest",key="run_no_backtest"):
-                    with st.spinner("Evaluating historical NO probabilities..."):
-                        st.session_state["no_backtest_results"]=backtest_no_props(prop_logs,min_games=8)
-                report=st.session_state.get("no_backtest_results")
-                if report is not None and not report.empty:
-                    shown=report.copy()
-                    for field in ("Actual_NO","Predicted_NO"):
-                        shown[field]=(shown[field]*100).round(1)
-                    shown["Brier"]=shown["Brier"].round(4)
-                    st.dataframe(shown,hide_index=True,use_container_width=True)
-                    st.caption("Calibration is preliminary. Low-frequency events and small sample sizes can produce misleading confidence.")
-    except Exception as exc:
-        st.warning(f"Multi-stat NO data unavailable: {exc}")
+                pcol1,pcol2=st.columns(2)
+                with pcol1:
+                    selected_props=st.multiselect("NO stat categories",
+                        ["PTS","REB","AST","STL","BLK"],
+                        default=["PTS","REB","AST"],key="no_stat_categories")
+                with pcol2:
+                    no_min=st.slider("NO confidence floor (%)",50,99,80,5,key="no_prop_floor")
+                filtered=prop_predictions[
+                    prop_predictions["prop"].isin(selected_props)&
+                    (prop_predictions["model_no_pct"]>=no_min)].copy()
+                if filtered.empty:
+                    st.info("No NO candidates match these settings.")
+                else:
+                    st.metric("Multi-stat NO research candidates",len(filtered))
+                    st.dataframe(filtered.sort_values("model_no_pct",ascending=False),
+                        hide_index=True,use_container_width=True)
+                    st.download_button("Download multi-stat NO research",
+                        filtered.to_csv(index=False),"milkball_multi_stat_no.csv",key="multi_no_download")
+                if st.button("Verify Kalshi NO picks",key="verify_kalshi_no"):
+                    with st.spinner("Checking exact NBA prop contracts and available NO orderbooks..."):
+                        try:
+                            verified,diagnostics=verify_candidates(filtered.head(100),max_quotes=50)
+                            st.session_state["verified_no"]=verified
+                            st.session_state["verified_no_diagnostics"]=diagnostics
+                        except Exception as exc:
+                            st.error(f"Kalshi verification failed: {exc}")
+                if "verified_no" in st.session_state:
+                    st.markdown("##### Verified Kalshi NO contracts")
+                    st.dataframe(st.session_state["verified_no"],hide_index=True,use_container_width=True)
+                    diagnostics=st.session_state.get("verified_no_diagnostics")
+                    if diagnostics is not None and not diagnostics.empty:
+                        with st.expander("Market verification diagnostics"):
+                            st.dataframe(diagnostics,hide_index=True,use_container_width=True)
+                    st.caption("Exact player, prop, threshold and today's ticker required. Edge excludes fees and model uncertainty. Unmatched contracts are NOT verified.")
+                with st.expander("Historical walk-forward calibration (research)"):
+                    st.caption("Uses only games preceding each target game. No market-price or fee data; Brier scores measure probability quality, not profit.")
+                    if st.button("Run historical NO backtest",key="run_no_backtest"):
+                        with st.spinner("Evaluating historical NO probabilities..."):
+                            st.session_state["no_backtest_results"]=backtest_no_props(prop_logs,min_games=8)
+                    report=st.session_state.get("no_backtest_results")
+                    if report is not None and not report.empty:
+                        shown=report.copy()
+                        for field in ("Actual_NO","Predicted_NO"):
+                            shown[field]=(shown[field]*100).round(1)
+                        shown["Brier"]=shown["Brier"].round(4)
+                        st.dataframe(shown,hide_index=True,use_container_width=True)
+                        st.caption("Calibration is preliminary. Low-frequency events and small sample sizes can produce misleading confidence.")
+        except Exception as exc:
+            st.warning(f"Multi-stat NO data unavailable: {exc}")
 
