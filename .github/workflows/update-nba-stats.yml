@@ -30,6 +30,10 @@ jobs:
         id: collect
         continue-on-error: true
         run: python collect_season.py
+      - name: Backfill points rebounds assists steals and blocks
+        id: props
+        continue-on-error: true
+        run: python collect_player_props.py
       - name: Record pregame model picks and settle completed picks
         run: python update_predictions.py
       - name: Save successful results even after partial failures
@@ -37,10 +41,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/nba_2026_27_regular_season_3pt.csv data/nba_2026_27_manifest.json data/model_predictions.csv
+          if [ -f data/nba_2026_27_player_props.csv ]; then git add data/nba_2026_27_player_props.csv; fi
           if ! git diff --cached --quiet; then
             git commit -m "Update 2026-27 regular-season ESPN game logs"
             git push
           fi
+      - name: Report player prop collection errors
+        if: steps.props.outcome == 'failure'
+        run: |
+          echo "Player prop collection incomplete; successful data was saved. Rerun to retry."
+          exit 1
       - name: Report collection errors
         if: steps.collect.outcome == 'failure'
         run: |
