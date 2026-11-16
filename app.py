@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from model import player_forecasts, score
+from no_scanner import build_no_candidates
 from tracking import select_candidates, load_predictions, summarize
 from validation import validate_logs, season_hit_rates
 from espn_stats import fetch_espn_logs, ESPNFeedError
@@ -494,6 +495,28 @@ with curated_slot:
         if not tracked.empty:
             st.caption(f"{int(tracked['correct'].isna().sum())} predictions are awaiting completed player boxscores.")
     st.caption("Tracking starts with saved prospective predictions; it does not backfill hypothetical historical picks. Missing player boxscores remain ungraded.")
+
+st.subheader("Milkball NO Scanner — Research Preview")
+st.caption("NO-only predictions. Phase 1 uses real saved three-point logs; points, rebounds, assists, steals, and blocks will be added only after their historical data and backtests are available.")
+no_col1,no_col2,no_col3=st.columns(3)
+with no_col1:
+    no_floor=st.slider("Minimum NO confidence",50,99,80,5,key="no_floor")
+with no_col2:
+    no_threshold=st.selectbox("Minimum 3PT threshold",[1,2,3,4,5,6],index=1,key="no_threshold")
+with no_col3:
+    no_games=st.slider("Minimum player games",5,25,8,key="no_games")
+no_candidates=build_no_candidates(forecasts,min_probability=no_floor/100,
+    min_games=no_games,min_threshold=no_threshold)
+if no_candidates.empty:
+    st.info("No NO candidates meet these filters. Lower the confidence floor or minimum threshold to explore.")
+else:
+    st.metric("NO candidates (unpriced)",len(no_candidates))
+    st.dataframe(no_candidates,hide_index=True,use_container_width=True)
+    st.download_button("Download NO research candidates",no_candidates.to_csv(index=False),
+        "milkball_no_research.csv",key="no_download")
+st.caption("No Kalshi contract prices are attached to this table. High NO probability alone does not establish positive expected value; NO signals are not approved trades.")
+with st.expander("Upcoming NO prop categories"):
+    st.write("Points · Rebounds · Assists · Steals · Blocks — awaiting reliable player-game logs and separate chronological validation. No probabilities are fabricated for missing categories.")
 
 st.subheader("Player forecasts")
 st.caption("Current 2026–27 regular-season data only. Volume mixture with observed game-to-game variation; 65% season + 35% last-five attempts; beta-binomial shooting accuracy shrunk toward 36%. Uncalibrated; no injury, expected minutes, or opponent adjustment yet.")
