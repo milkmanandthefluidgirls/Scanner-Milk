@@ -6,6 +6,7 @@ import streamlit as st
 from model import player_forecasts, score
 from no_scanner import build_no_candidates
 from no_prop_model import forecast_props, backtest as backtest_no_props
+from kalshi_no_verify import verify_candidates
 from tracking import select_candidates, load_predictions, summarize
 from validation import validate_logs, season_hit_rates
 from espn_stats import fetch_espn_logs, ESPNFeedError
@@ -27,7 +28,7 @@ def nba_three_point_candidates(markets):
                             case=False,regex=True)
     return markets.loc[nba & threes].copy()
 
-st.set_page_config(page_title="Milkball | NBA 3PT Intel",page_icon="🥛",layout="wide",initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Milkball | NBA NO Scanner",page_icon="🥛",layout="wide",initial_sidebar_state="collapsed")
 st.markdown("""
 <style>
 .block-container {max-width:1200px;padding-top:1.3rem;padding-bottom:3rem;}
@@ -49,7 +50,7 @@ with hero_logo:
     if brand_logo.exists(): st.image(str(brand_logo),use_container_width=True)
 with hero_copy:
     st.title("Milkball")
-    st.caption("NBA 3PT INTEL • Live market discovery • Independent forecasts")
+    st.caption("NBA NO SCANNER • Player prop research • Market verification")
 
 with st.sidebar:
     season=st.text_input("NBA season",value="2026-27")
@@ -156,7 +157,7 @@ except Exception as e:
     st.warning(f"Schedule feed unavailable: {e}")
 
 # Reserve this spot so curated signals appear immediately after tonight's games.
-curated_slot=st.container()
+
 
 st.subheader("Season data")
 st.caption("Current season ONLY. Saved game logs are updated by GitHub Actions and persist across dashboard restarts.")
@@ -267,235 +268,93 @@ if forecasts.empty:
     st.warning("No qualifying player logs.")
     st.stop()
 # Curated model estimates and prospective results directly beneath matchups.
-with curated_slot:
-    confidence_floor=st.slider("Minimum model confidence (%)",65,95,80,5,key="milkball_confidence_floor")
-    minimum_probability=confidence_floor/100
-    st.subheader(f"Model picks · YES {confidence_floor}%+")
-    st.caption("YES to made threes only · Adjustable confidence floor · Current season · Not price-verified or injury-adjusted")
-    picks=select_candidates(forecasts,min_games=min_games,minimum=minimum_probability)
-    if not picks.empty:
-        # The 90% gate selects players; their entire available Kalshi ladder is shown.
-        # Query the standard NBA 3PT series, never escalator/protection contracts.
-        import re
-        import unicodedata
-        from zoneinfo import ZoneInfo
-
-        def normalize_player_name(name):
-            name=unicodedata.normalize("NFKD",str(name))
-            name="".join(ch for ch in name if not unicodedata.combining(ch))
-            return re.sub(r"[^a-z0-9]","",name.casefold())
-
-        market_thresholds={}
-        market_error=None
-        # Do not block the picks table on a slow Kalshi network scan.
-        verify_listings=st.button("Verify Kalshi listings",key="verify_picks_listings")
-        try:
-            if verify_listings:
-                with st.spinner("Checking Kalshi listings..."):
-                    all_markets,market_diagnostics=get_targeted_markets()
-            else:
-                all_markets=pd.DataFrame()
-                market_diagnostics=pd.DataFrame()
-            if not market_diagnostics.empty and market_diagnostics["status"].eq("ERROR").any():
-                market_error="Kalshi returned an incomplete market scan."
-            if not all_markets.empty:
-                today_et=dt.datetime.now(ZoneInfo("America/New_York")).date()
-                date_token=today_et.strftime("%y%b%d").upper()
-                markets_today=all_markets[
-                    all_markets["ticker"].fillna("").str.upper().str.contains(date_token,regex=False)
-                ]
-                for _,market in markets_today.iterrows():
-                    # Match standard titles, e.g. "Player Name: 2+ threes".
-                    match=re.fullmatch(r"\s*(.+?):\s*(\d+)\+\s*threes\s*",
-                                       str(market.get("title","")),re.IGNORECASE)
-                    if match:
-                        key=normalize_player_name(match.group(1))
-                        market_thresholds.setdefault(key,set()).add(int(match.group(2)))
-        except Exception as exc:
-            market_error=f"Kalshi market lookup failed: {exc}"
-
-        if market_error:
-            st.warning(market_error+" Model estimates are still displayed below.")
-        if not market_thresholds:
-            st.info("Showing model picks immediately using 1+ through 4+ probabilities. Tap Verify Kalshi listings to check live contracts; until then, thresholds are unverified.")
-        # Build the table directly from model forecasts. Avoid per-row
-        # rendering errors and keep the probabilities visible even without Kalshi.
-        selected_ids=set(picks.head(25)["player_id"].astype(str))
-        visible=forecasts[forecasts["player_id"].astype(str).isin(selected_ids)].copy()
-        visible=visible[visible["threshold"].between(1,4)]
-        visible["Model YES %"]=(visible["fair_yes"]*100).round(1)
-        probability_table=visible.pivot_table(
-            index=["player_id","player","team","games","projected_pa"],
-            columns="threshold",values="Model YES %",aggfunc="first"
-        ).reset_index()
-        probability_table.columns=[str(c)+"+" if isinstance(c,int) else c for c in probability_table.columns]
-        probability_table=probability_table.rename(columns={
-            "player":"Player","team":"Team","games":"Games",
-            "projected_pa":"3PA / game"})
-        threshold_columns=[str(t)+"+" for t in (1,2,3,4)]
-        for column in threshold_columns:
-            if column not in probability_table.columns:
-                probability_table[column]=float("nan")
-        def qualifying_label(row):
-            valid=[t for t in (1,2,3,4)
-                   if pd.notna(row[str(t)+"+"]) and row[str(t)+"+"]>=confidence_floor]
-            if not valid:return "—"
-            t=max(valid)
-            return f"{t}+ ({row[str(t)+'+']:.1f}%)"
-        probability_table["Best qualifying"]=probability_table.apply(qualifying_label,axis=1)
-        probability_table["Kalshi listing"]=probability_table["Player"].map(
-            lambda name:"Confirmed" if market_thresholds.get(normalize_player_name(name)) else "Unverified")
-        probability_table=probability_table.sort_values(["1+","Games"],ascending=False)
-        display_columns=["Player","Team","Best qualifying","Kalshi listing","Games","3PA / game"]+threshold_columns
-        st.dataframe(probability_table[display_columns],hide_index=True,use_container_width=True)
-        st.caption("Best qualifying is the highest modeled 1+ to 4+ threshold meeting your confidence floor. These are uncalibrated model probabilities, not market prices. Unverified thresholds may not be listed on Kalshi.")
+st.subheader("Model results tracker")
+st.caption("Only predictions saved before games are graded. Historical season hit rates are not counted as model wins.")
+tracked=load_predictions()
+settled=tracked[tracked["correct"].notna()].copy()
+period=st.selectbox("Results period",["Last 7 days","Last 30 days","This season","Custom dates"],index=1,key="tracking_period")
+today=dt.datetime.now(dt.timezone.utc).date()
+if period=="Custom dates":
+    d1,d2=st.columns(2)
+    start_date=d1.date_input("From",value=today-dt.timedelta(days=30),key="track_from")
+    end_date=d2.date_input("To",value=today,key="track_to")
+elif period=="Last 7 days":
+    start_date,end_date=today-dt.timedelta(days=6),today
+elif period=="Last 30 days":
+    start_date,end_date=today-dt.timedelta(days=29),today
+else:
+    start_date,end_date=dt.date(2026,10,1),today
+if not settled.empty:
+    settled=settled[settled["prediction_date"].between(str(start_date),str(end_date))]
+st.markdown("#### Results by made-threes threshold")
+threshold_choice=st.selectbox("Past performance threshold",
+    ["All thresholds","1+ threes","2+ threes","3+ threes","4+ threes"],
+    key="tracking_threshold")
+# Show every threshold, including thresholds without any settled picks.
+if not settled.empty:
+    threshold_summary=settled.copy()
+    threshold_summary["threshold"]=pd.to_numeric(threshold_summary["threshold"],errors="coerce")
+    threshold_summary["probability"]=pd.to_numeric(threshold_summary["probability"],errors="coerce")
+    threshold_summary["correct_flag"]=threshold_summary["correct"].astype(str).str.lower().eq("true")
+    summary_rows=[]
+    for t in (1,2,3,4):
+        g=threshold_summary[threshold_summary["threshold"]==t]
+        n=len(g)
+        summary_rows.append({"Threshold":f"{t}+","Correct":int(g["correct_flag"].sum()),
+            "Total":n,"Accuracy":round(g["correct_flag"].mean()*100,1) if n else None,
+            "Avg model %":round(g["probability"].mean()*100,1) if n else None})
+    st.dataframe(pd.DataFrame(summary_rows),hide_index=True,use_container_width=True)
+if threshold_choice!="All thresholds":
+    selected_threshold=int(threshold_choice[0])
+    settled=settled[pd.to_numeric(settled["threshold"],errors="coerce")==selected_threshold].copy()
+if not settled.empty:
+    correct=settled["correct"].astype(str).str.lower().eq("true")
+    a,b,d=st.columns(3)
+    a.metric("Accuracy",f"{correct.mean()*100:.1f}%")
+    b.metric("Correct",f"{int(correct.sum())} / {len(correct)}")
+    d.metric("Pending",int(tracked["correct"].isna().sum()))
+    # Mutually exclusive confidence bands; the 100% upper bound belongs to 90%+.
+    st.markdown("#### Accuracy by model confidence")
+    st.caption("Each saved prediction belongs to one tier. Only settled, pregame predictions are counted; small samples can be misleading.")
+    tiered=settled.copy()
+    tiered["probability"]=pd.to_numeric(tiered["probability"],errors="coerce")
+    tiered=tiered[tiered["probability"].between(0,1)].copy()
+    tiered["correct_flag"]=tiered["correct"].astype(str).str.lower().eq("true")
+    tier_edges=[0,.50,.60,.70,.80,.90,1.0000001]
+    tier_labels=["Below 50%","50–59%","60–69%","70–79%","80–89%","90%+"]
+    tiered["Confidence tier"]=pd.cut(tiered["probability"],bins=tier_edges,
+        labels=tier_labels,right=False,include_lowest=True)
+    tier_summary=tiered.groupby("Confidence tier",observed=False).agg(
+        Correct=("correct_flag","sum"),Total=("correct_flag","size"),
+        Predicted=("probability","mean")).reset_index()
+    tier_summary=tier_summary[tier_summary["Total"]>0].copy()
+    if not tier_summary.empty:
+        tier_summary["Accuracy"]=(tier_summary["Correct"]/tier_summary["Total"]*100).round(1)
+        tier_summary["Avg model %"]=(tier_summary["Predicted"]*100).round(1)
+        tier_summary["Difference (pp)"]=(tier_summary["Accuracy"]-tier_summary["Avg model %"]).round(1)
+        tier_summary["Confidence tier"]=tier_summary["Confidence tier"].astype(str)
+        tier_summary=tier_summary.iloc[::-1]
+        st.dataframe(tier_summary[["Confidence tier","Correct","Total","Accuracy",
+            "Avg model %","Difference (pp)"]],hide_index=True,use_container_width=True)
+        st.caption("Difference (pp) = actual accuracy minus average predicted probability. Positive means outcomes exceeded forecasts.")
     else:
-        st.info("No YES picks currently meet the selected confidence cutoff and minimum-games requirement.")
-
-    # Explain why every player on today's scheduled teams did or did not qualify.
-    with st.expander("Player eligibility audit · all matchups", expanded=False):
-        st.caption("Season-data audit for every scheduled team. Best qualifying is the highest 1+ to 4+ threshold meeting the selected confidence floor. This is not a confirmed active roster or injury report.")
-        audit_rows=[]
-        today_games=schedule[["away","home"]].drop_duplicates() if not schedule.empty else pd.DataFrame()
-        if not today_games.empty:
-            # Include players who lack enough games to enter player_forecasts.
-            source_logs=logs.copy()
-            source_logs["PLAYER_ID"]=source_logs["PLAYER_ID"].astype(str)
-            for _,matchup in today_games.iterrows():
-                matchup_label=f'{matchup["away"]} @ {matchup["home"]}'
-                for team_code in (matchup["away"],matchup["home"]):
-                    team_logs=source_logs[source_logs["TEAM_ABBREVIATION"]==team_code]
-                    if team_logs.empty:
-                        audit_rows.append({"Game":matchup_label,"Team":team_code,"Player":"No player logs","Games":0,"Proj 3PA":None,"Best YES %":None,"Best qualifying":"—","Status":"MISSING TEAM DATA"})
-                        continue
-                    for player_id,history in team_logs.groupby("PLAYER_ID"):
-                        history=history.sort_values("GAME_DATE",ascending=False)
-                        latest=history.iloc[0]
-                        name=str(latest["PLAYER_NAME"])
-                        n=len(history)
-                        season_pa=float(history["FG3A"].mean())
-                        recent_pa=float(history.head(5)["FG3A"].mean())
-                        projected=.65*season_pa+.35*recent_pa
-                        player_fc=forecasts[forecasts["player_id"].astype(str)==player_id]
-                        eligible_fc=player_fc[player_fc["threshold"].between(1,4)] if not player_fc.empty else player_fc
-                        qualified_fc=eligible_fc[eligible_fc["fair_yes"]>=minimum_probability]
-                        best_qualified=qualified_fc.sort_values("threshold",ascending=False).head(1)
-                        best=eligible_fc.sort_values("fair_yes",ascending=False).head(1)
-                        best_pct=round(float(best.iloc[0]["fair_yes"])*100,1) if not best.empty else None
-                        best_threshold=(f'{int(best_qualified.iloc[0]["threshold"])}+ ({float(best_qualified.iloc[0]["fair_yes"])*100:.1f}%)' if not best_qualified.empty else "—")
-                        if n<min_games:
-                            status=f'INSUFFICIENT GAMES ({n}/{min_games})'
-                        elif projected<1.5:
-                            status="LOW 3PA VOLUME"
-                        elif best_pct is None:
-                            status="NO MODEL FORECAST"
-                        elif best_pct>=confidence_floor:
-                            status=f"QUALIFIES {confidence_floor}%+"
-                        else:
-                            status=f"BELOW {confidence_floor}%"
-                        audit_rows.append({"Game":matchup_label,"Team":team_code,"Player":name,
-                                           "Games":n,"Proj 3PA":round(projected,1),
-                                           "Best YES %":best_pct,"Best qualifying":best_threshold,
-                                           "Status":status})
-            audit=pd.DataFrame(audit_rows)
-            game_options=list(dict.fromkeys(audit["Game"].tolist()))
-            game_choice=st.selectbox("Matchup",["All matchups"]+game_options,key="eligibility_game")
-            audit_view=audit if game_choice=="All matchups" else audit[audit["Game"]==game_choice]
-            st.dataframe(audit_view.sort_values(["Game","Team","Best YES %"],ascending=[True,True,False],na_position="last"),
-                         hide_index=True,use_container_width=True)
-            st.caption("Historical team assignment is taken from each player's latest stored game for that team; traded or inactive players may appear. Availability must be checked separately.")
-            st.download_button("Download player eligibility audit",audit.to_csv(index=False),
-                               "milkball_player_eligibility_audit.csv",key="eligibility_download")
-        else:
-            st.info("No scheduled games available for an eligibility audit.")
-
-    st.subheader("Model results tracker")
-    st.caption("Only predictions saved before games are graded. Historical season hit rates are not counted as model wins.")
-    tracked=load_predictions()
-    settled=tracked[tracked["correct"].notna()].copy()
-    period=st.selectbox("Results period",["Last 7 days","Last 30 days","This season","Custom dates"],index=1,key="tracking_period")
-    today=dt.datetime.now(dt.timezone.utc).date()
-    if period=="Custom dates":
-        d1,d2=st.columns(2)
-        start_date=d1.date_input("From",value=today-dt.timedelta(days=30),key="track_from")
-        end_date=d2.date_input("To",value=today,key="track_to")
-    elif period=="Last 7 days":
-        start_date,end_date=today-dt.timedelta(days=6),today
-    elif period=="Last 30 days":
-        start_date,end_date=today-dt.timedelta(days=29),today
-    else:
-        start_date,end_date=dt.date(2026,10,1),today
-    if not settled.empty:
-        settled=settled[settled["prediction_date"].between(str(start_date),str(end_date))]
-    st.markdown("#### Results by made-threes threshold")
-    threshold_choice=st.selectbox("Past performance threshold",
-        ["All thresholds","1+ threes","2+ threes","3+ threes","4+ threes"],
-        key="tracking_threshold")
-    # Show every threshold, including thresholds without any settled picks.
-    if not settled.empty:
-        threshold_summary=settled.copy()
-        threshold_summary["threshold"]=pd.to_numeric(threshold_summary["threshold"],errors="coerce")
-        threshold_summary["probability"]=pd.to_numeric(threshold_summary["probability"],errors="coerce")
-        threshold_summary["correct_flag"]=threshold_summary["correct"].astype(str).str.lower().eq("true")
-        summary_rows=[]
-        for t in (1,2,3,4):
-            g=threshold_summary[threshold_summary["threshold"]==t]
-            n=len(g)
-            summary_rows.append({"Threshold":f"{t}+","Correct":int(g["correct_flag"].sum()),
-                "Total":n,"Accuracy":round(g["correct_flag"].mean()*100,1) if n else None,
-                "Avg model %":round(g["probability"].mean()*100,1) if n else None})
-        st.dataframe(pd.DataFrame(summary_rows),hide_index=True,use_container_width=True)
-    if threshold_choice!="All thresholds":
-        selected_threshold=int(threshold_choice[0])
-        settled=settled[pd.to_numeric(settled["threshold"],errors="coerce")==selected_threshold].copy()
-    if not settled.empty:
-        correct=settled["correct"].astype(str).str.lower().eq("true")
-        a,b,d=st.columns(3)
-        a.metric("Accuracy",f"{correct.mean()*100:.1f}%")
-        b.metric("Correct",f"{int(correct.sum())} / {len(correct)}")
-        d.metric("Pending",int(tracked["correct"].isna().sum()))
-        # Mutually exclusive confidence bands; the 100% upper bound belongs to 90%+.
-        st.markdown("#### Accuracy by model confidence")
-        st.caption("Each saved prediction belongs to one tier. Only settled, pregame predictions are counted; small samples can be misleading.")
-        tiered=settled.copy()
-        tiered["probability"]=pd.to_numeric(tiered["probability"],errors="coerce")
-        tiered=tiered[tiered["probability"].between(0,1)].copy()
-        tiered["correct_flag"]=tiered["correct"].astype(str).str.lower().eq("true")
-        tier_edges=[0,.50,.60,.70,.80,.90,1.0000001]
-        tier_labels=["Below 50%","50–59%","60–69%","70–79%","80–89%","90%+"]
-        tiered["Confidence tier"]=pd.cut(tiered["probability"],bins=tier_edges,
-            labels=tier_labels,right=False,include_lowest=True)
-        tier_summary=tiered.groupby("Confidence tier",observed=False).agg(
-            Correct=("correct_flag","sum"),Total=("correct_flag","size"),
-            Predicted=("probability","mean")).reset_index()
-        tier_summary=tier_summary[tier_summary["Total"]>0].copy()
-        if not tier_summary.empty:
-            tier_summary["Accuracy"]=(tier_summary["Correct"]/tier_summary["Total"]*100).round(1)
-            tier_summary["Avg model %"]=(tier_summary["Predicted"]*100).round(1)
-            tier_summary["Difference (pp)"]=(tier_summary["Accuracy"]-tier_summary["Avg model %"]).round(1)
-            tier_summary["Confidence tier"]=tier_summary["Confidence tier"].astype(str)
-            tier_summary=tier_summary.iloc[::-1]
-            st.dataframe(tier_summary[["Confidence tier","Correct","Total","Accuracy",
-                "Avg model %","Difference (pp)"]],hide_index=True,use_container_width=True)
-            st.caption("Difference (pp) = actual accuracy minus average predicted probability. Positive means outcomes exceeded forecasts.")
-        else:
-            st.info("No settled predictions with valid probabilities in this period.")
-        st.caption("Older snapshots saved only 90%+ predictions. Lower tiers populate from newer snapshots; no retrospective picks are invented.")
-        if len(settled)<100:
-            st.warning(f"Calibration sample is small ({len(settled)} settled predictions). Do not change model probabilities based on these results alone.")
-        daily=summarize(settled)
-        st.dataframe(daily.sort_values("Date",ascending=False),hide_index=True,use_container_width=True)
-        st.line_chart(daily.set_index("Date")["Accuracy"])
-        with st.expander("Individual prediction results"):
-            view=settled[["prediction_date","player","side","threshold","probability","result","correct"]].copy()
-            view["probability"]=(view["probability"]*100).round(1)
-            st.dataframe(view.sort_values("prediction_date",ascending=False),hide_index=True,use_container_width=True)
-        st.download_button("Download tracked results",settled.to_csv(index=False),"scanner_milk_model_results.csv",key="track_download")
-    else:
-        st.info("No settled pregame predictions for this threshold and period yet.")
-        if not tracked.empty:
-            st.caption(f"{int(tracked['correct'].isna().sum())} predictions are awaiting completed player boxscores.")
-    st.caption("Tracking starts with saved prospective predictions; it does not backfill hypothetical historical picks. Missing player boxscores remain ungraded.")
+        st.info("No settled predictions with valid probabilities in this period.")
+    st.caption("Older snapshots saved only 90%+ predictions. Lower tiers populate from newer snapshots; no retrospective picks are invented.")
+    if len(settled)<100:
+        st.warning(f"Calibration sample is small ({len(settled)} settled predictions). Do not change model probabilities based on these results alone.")
+    daily=summarize(settled)
+    st.dataframe(daily.sort_values("Date",ascending=False),hide_index=True,use_container_width=True)
+    st.line_chart(daily.set_index("Date")["Accuracy"])
+    with st.expander("Individual prediction results"):
+        view=settled[["prediction_date","player","side","threshold","probability","result","correct"]].copy()
+        view["probability"]=(view["probability"]*100).round(1)
+        st.dataframe(view.sort_values("prediction_date",ascending=False),hide_index=True,use_container_width=True)
+    st.download_button("Download tracked results",settled.to_csv(index=False),"scanner_milk_model_results.csv",key="track_download")
+else:
+    st.info("No settled pregame predictions for this threshold and period yet.")
+    if not tracked.empty:
+        st.caption(f"{int(tracked['correct'].isna().sum())} predictions are awaiting completed player boxscores.")
+st.caption("Tracking starts with saved prospective predictions; it does not backfill hypothetical historical picks. Missing player boxscores remain ungraded.")
 
 st.subheader("Milkball NO Scanner — Research Preview")
 st.caption("NO-only predictions. Phase 1 uses real saved three-point logs; points, rebounds, assists, steals, and blocks will be added only after their historical data and backtests are available.")
@@ -555,6 +414,22 @@ else:
                     hide_index=True,use_container_width=True)
                 st.download_button("Download multi-stat NO research",
                     filtered.to_csv(index=False),"milkball_multi_stat_no.csv",key="multi_no_download")
+            if st.button("Verify Kalshi NO picks",key="verify_kalshi_no"):
+                with st.spinner("Checking exact NBA prop contracts and available NO orderbooks..."):
+                    try:
+                        verified,diagnostics=verify_candidates(filtered.head(100),max_quotes=50)
+                        st.session_state["verified_no"]=verified
+                        st.session_state["verified_no_diagnostics"]=diagnostics
+                    except Exception as exc:
+                        st.error(f"Kalshi verification failed: {exc}")
+            if "verified_no" in st.session_state:
+                st.markdown("##### Verified Kalshi NO contracts")
+                st.dataframe(st.session_state["verified_no"],hide_index=True,use_container_width=True)
+                diagnostics=st.session_state.get("verified_no_diagnostics")
+                if diagnostics is not None and not diagnostics.empty:
+                    with st.expander("Market verification diagnostics"):
+                        st.dataframe(diagnostics,hide_index=True,use_container_width=True)
+                st.caption("Exact player, prop, threshold and today's ticker required. Edge excludes fees and model uncertainty. Unmatched contracts are NOT verified.")
             with st.expander("Historical walk-forward calibration (research)"):
                 st.caption("Uses only games preceding each target game. No market-price or fee data; Brier scores measure probability quality, not profit.")
                 if st.button("Run historical NO backtest",key="run_no_backtest"):
@@ -571,59 +446,3 @@ else:
     except Exception as exc:
         st.warning(f"Multi-stat NO data unavailable: {exc}")
 
-st.subheader("Player forecasts")
-st.caption("Current 2026–27 regular-season data only. Volume mixture with observed game-to-game variation; 65% season + 35% last-five attempts; beta-binomial shooting accuracy shrunk toward 36%. Uncalibrated; no injury, expected minutes, or opponent adjustment yet.")
-st.dataframe(forecasts,hide_index=True,use_container_width=True)
-
-show_targeted_markets()
-st.subheader("Public Kalshi market catalog")
-st.warning("Automatic player-to-contract matching is not enabled. Exact contract verification required.")
-if st.button("Fetch Kalshi markets"):
-    try: st.session_state["markets"]=get_markets()
-    except Exception as e: st.error(f"Kalshi API: {e}")
-markets=st.session_state.get("markets",pd.DataFrame())
-if not markets.empty:
-    candidates=nba_three_point_candidates(markets)
-    st.metric("Markets sampled",len(markets))
-    st.metric("Possible NBA 3PT contracts",len(candidates))
-    st.caption("Capped market sample; candidate matching is unverified and not exhaustive.")
-    columns=[c for c in ("ticker","title","subtitle","status","yes_ask_dollars","no_ask_dollars") if c in candidates.columns]
-    if not candidates.empty:
-        st.dataframe(candidates[columns].head(500),hide_index=True,use_container_width=True)
-        st.download_button("Download filtered candidates",candidates.to_csv(index=False),"nba_3pt_candidates.csv")
-    else:
-        st.info("No candidates in the sample. This does not prove none exist.")
-
-st.subheader("Contract mapping & orderbooks")
-st.caption("Upload CSV with player,threshold,ticker. Mapping must match the exact 3PT YES contract. RFQ combos are not included.")
-mapping_upload=st.file_uploader("Verified contract mapping CSV",type="csv",key="mapping")
-if mapping_upload is not None:
-    try:
-        mapping=pd.read_csv(mapping_upload)
-        if not {"player","threshold","ticker"}.issubset(mapping.columns):
-            raise ValueError("CSV requires player,threshold,ticker")
-        if mapping.duplicated(["player","threshold"]).any():
-            raise ValueError("Duplicate player/threshold mapping")
-        if st.button("Fetch mapped orderbooks"):
-            rows=[]
-            for _,r in mapping.iterrows():
-                try:
-                    quote=extract_best_asks(kalshi_orderbook(str(r.ticker)))
-                    rows.append({"player":r.player,"threshold":int(r.threshold),**quote})
-                except Exception as e:
-                    st.warning(f"{r.ticker}: {e}")
-            st.session_state["quotes"]=pd.DataFrame(rows)
-    except Exception as e: st.error(str(e))
-quotes=st.session_state.get("quotes",pd.DataFrame())
-results=score(forecasts,quotes,min_edge)
-c1,c2,c3=st.columns(3)
-c1.metric("Players",forecasts.player.nunique())
-c2.metric("YES/NO rows",len(results))
-c3.metric("Review flags",int((results.decision=="REVIEW").sum()))
-st.subheader("Ranked research signals")
-filter_=st.selectbox("Show",["All","REVIEW","NO QUOTE","PASS"])
-view=results if filter_=="All" else results[results.decision==filter_]
-cols=["player","team","side","threshold","three_pa","last5_pa","hit_rate","fair","price","net_edge","decision"]
-st.dataframe(view[cols],hide_index=True,use_container_width=True)
-st.download_button("Download ranked CSV",results.to_csv(index=False),"nba_3pt_signals.csv")
-st.caption("Fee estimate is approximate, not an exchange quote. Orderbooks can change. No automated orders, combo RFQs, or guarantees.")
