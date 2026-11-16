@@ -425,6 +425,27 @@ with curated_slot:
         start_date,end_date=dt.date(2026,10,1),today
     if not settled.empty:
         settled=settled[settled["prediction_date"].between(str(start_date),str(end_date))]
+    st.markdown("#### Results by made-threes threshold")
+    threshold_choice=st.selectbox("Past performance threshold",
+        ["All thresholds","1+ threes","2+ threes","3+ threes","4+ threes"],
+        key="tracking_threshold")
+    # Show every threshold, including thresholds without any settled picks.
+    if not settled.empty:
+        threshold_summary=settled.copy()
+        threshold_summary["threshold"]=pd.to_numeric(threshold_summary["threshold"],errors="coerce")
+        threshold_summary["probability"]=pd.to_numeric(threshold_summary["probability"],errors="coerce")
+        threshold_summary["correct_flag"]=threshold_summary["correct"].astype(str).str.lower().eq("true")
+        summary_rows=[]
+        for t in (1,2,3,4):
+            g=threshold_summary[threshold_summary["threshold"]==t]
+            n=len(g)
+            summary_rows.append({"Threshold":f"{t}+","Correct":int(g["correct_flag"].sum()),
+                "Total":n,"Accuracy":round(g["correct_flag"].mean()*100,1) if n else None,
+                "Avg model %":round(g["probability"].mean()*100,1) if n else None})
+        st.dataframe(pd.DataFrame(summary_rows),hide_index=True,use_container_width=True)
+    if threshold_choice!="All thresholds":
+        selected_threshold=int(threshold_choice[0])
+        settled=settled[pd.to_numeric(settled["threshold"],errors="coerce")==selected_threshold].copy()
     if not settled.empty:
         correct=settled["correct"].astype(str).str.lower().eq("true")
         a,b,d=st.columns(3)
@@ -457,7 +478,9 @@ with curated_slot:
             st.caption("Difference (pp) = actual accuracy minus average predicted probability. Positive means outcomes exceeded forecasts.")
         else:
             st.info("No settled predictions with valid probabilities in this period.")
-        st.caption("Earlier snapshots saved only 90%+ predictions. Lower tiers will populate after new 70%+ pregame snapshots settle.")
+        st.caption("Older snapshots saved only 90%+ predictions. Lower tiers populate from newer snapshots; no retrospective picks are invented.")
+        if len(settled)<100:
+            st.warning(f"Calibration sample is small ({len(settled)} settled predictions). Do not change model probabilities based on these results alone.")
         daily=summarize(settled)
         st.dataframe(daily.sort_values("Date",ascending=False),hide_index=True,use_container_width=True)
         st.line_chart(daily.set_index("Date")["Accuracy"])
@@ -467,7 +490,7 @@ with curated_slot:
             st.dataframe(view.sort_values("prediction_date",ascending=False),hide_index=True,use_container_width=True)
         st.download_button("Download tracked results",settled.to_csv(index=False),"scanner_milk_model_results.csv",key="track_download")
     else:
-        st.info("No settled, pregame predictions in this period yet. Daily snapshots will begin after the next successful GitHub Actions run.")
+        st.info("No settled pregame predictions for this threshold and period yet.")
         if not tracked.empty:
             st.caption(f"{int(tracked['correct'].isna().sum())} predictions are awaiting completed player boxscores.")
     st.caption("Tracking starts with saved prospective predictions; it does not backfill hypothetical historical picks. Missing player boxscores remain ungraded.")
