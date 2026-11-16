@@ -410,93 +410,106 @@ else:
 st.caption("Tracking starts with saved prospective predictions; it does not backfill hypothetical historical picks. Missing player boxscores remain ungraded.")
 
 with no_picks_slot:
-    st.subheader("Milkball NO Scanner — Research Preview")
-    st.caption("NO-only predictions. Phase 1 uses real saved three-point logs; points, rebounds, assists, steals, and blocks will be added only after their historical data and backtests are available.")
-    no_col1,no_col2,no_col3=st.columns(3)
-    with no_col1:
-        no_floor=st.slider("Minimum NO confidence",50,99,80,5,key="no_floor")
-    with no_col2:
-        no_threshold=st.selectbox("Minimum 3PT threshold",[1,2,3,4,5,6],index=1,key="no_threshold")
-    with no_col3:
+    st.subheader("Milkball NO Model Picks")
+    st.caption("NBA player props · NO only · Current-season forecasts · Uncalibrated research probabilities")
+    no_a,no_b,no_c=st.columns(3)
+    with no_a:
+        no_floor=st.slider("Minimum model NO confidence (%)",50,99,80,5,key="no_floor")
+    with no_b:
         no_games=st.slider("Minimum player games",5,25,8,key="no_games")
-    no_candidates=build_no_candidates(forecasts,min_probability=no_floor/100,
-        min_games=no_games,min_threshold=no_threshold)
-    if no_candidates.empty:
-        st.info("No NO candidates meet these filters. Lower the confidence floor or minimum threshold to explore.")
-    else:
-        st.metric("NO candidates (unpriced)",len(no_candidates))
-        st.dataframe(no_candidates,hide_index=True,use_container_width=True)
-        st.download_button("Download NO research candidates",no_candidates.to_csv(index=False),
-            "milkball_no_research.csv",key="no_download")
-    st.caption("No Kalshi contract prices are attached to this table. High NO probability alone does not establish positive expected value; NO signals are not approved trades.")
-    with st.expander("Upcoming NO prop categories"):
-        st.write("Points · Rebounds · Assists · Steals · Blocks — awaiting reliable player-game logs and separate chronological validation. No probabilities are fabricated for missing categories.")
-
-    st.markdown("#### NO Scanner — Points, Rebounds, Assists, Steals & Blocks")
-    st.caption("Experimental count-stat distributions. No Kalshi prices or verified positive edges; do not treat these as approved trades.")
+    with no_c:
+        selected_props=st.multiselect("Player props",["3PT made","PTS","REB","AST","STL","BLK"],
+            default=["3PT made","PTS","REB","AST"],key="no_stat_categories")
+    today_et=dt.datetime.now(__import__("zoneinfo").ZoneInfo("America/New_York")).date().isoformat()
+    all_no=[]
+    three_no=build_no_candidates(forecasts,min_probability=no_floor/100,
+        min_games=no_games,min_threshold=1)
+    if not three_no.empty:
+        three_no=three_no.rename(columns={"projected_3pa":"projected_mean"})
+        all_no.append(three_no)
     prop_data_path=Path("data/nba_2026_27_player_props.csv")
-    if not prop_data_path.exists():
-        st.info("Player prop history is not collected yet. The scheduled GitHub Actions workflow will backfill completed box scores; you can also run it manually.")
-    else:
+    prop_logs=None
+    if prop_data_path.exists():
         try:
             prop_logs=pd.read_csv(prop_data_path,dtype={"PLAYER_ID":str,"GAME_ID":str})
-            required_props={"PLAYER_ID","GAME_DATE","GAME_ID","PTS","REB","AST","STL","BLK"}
+            required_props={"PLAYER_ID","PLAYER_NAME","TEAM_ABBREVIATION","GAME_DATE",
+                            "GAME_ID","PTS","REB","AST","STL","BLK"}
             if not required_props.issubset(prop_logs.columns):
-                raise ValueError("Player prop dataset is missing required statistics")
-            prop_logs=prop_logs[prop_logs["GAME_DATE"].astype(str)<dt.datetime.now(
-                __import__("zoneinfo").ZoneInfo("America/New_York")).date().isoformat()]
-            st.caption(f"Saved player-game rows: {len(prop_logs):,}. Data source: completed ESPN box scores.")
-            prop_predictions=forecast_props(prop_logs,min_games=no_games)
-            if prop_predictions.empty:
-                st.info("Not enough complete player-game history to forecast these props.")
-            else:
-                pcol1,pcol2=st.columns(2)
-                with pcol1:
-                    selected_props=st.multiselect("NO stat categories",
-                        ["PTS","REB","AST","STL","BLK"],
-                        default=["PTS","REB","AST"],key="no_stat_categories")
-                with pcol2:
-                    no_min=st.slider("NO confidence floor (%)",50,99,80,5,key="no_prop_floor")
-                filtered=prop_predictions[
-                    prop_predictions["prop"].isin(selected_props)&
-                    (prop_predictions["model_no_pct"]>=no_min)].copy()
-                if filtered.empty:
-                    st.info("No NO candidates match these settings.")
-                else:
-                    st.metric("Multi-stat NO research candidates",len(filtered))
-                    st.dataframe(filtered.sort_values("model_no_pct",ascending=False),
-                        hide_index=True,use_container_width=True)
-                    st.download_button("Download multi-stat NO research",
-                        filtered.to_csv(index=False),"milkball_multi_stat_no.csv",key="multi_no_download")
-                if st.button("Verify Kalshi NO picks",key="verify_kalshi_no"):
-                    with st.spinner("Checking exact NBA prop contracts and available NO orderbooks..."):
-                        try:
-                            verified,diagnostics=verify_candidates(filtered.head(100),max_quotes=50)
-                            st.session_state["verified_no"]=verified
-                            st.session_state["verified_no_diagnostics"]=diagnostics
-                        except Exception as exc:
-                            st.error(f"Kalshi verification failed: {exc}")
-                if "verified_no" in st.session_state:
-                    st.markdown("##### Verified Kalshi NO contracts")
-                    st.dataframe(st.session_state["verified_no"],hide_index=True,use_container_width=True)
-                    diagnostics=st.session_state.get("verified_no_diagnostics")
-                    if diagnostics is not None and not diagnostics.empty:
-                        with st.expander("Market verification diagnostics"):
-                            st.dataframe(diagnostics,hide_index=True,use_container_width=True)
-                    st.caption("Exact player, prop, threshold and today's ticker required. Edge excludes fees and model uncertainty. Unmatched contracts are NOT verified.")
-                with st.expander("Historical walk-forward calibration (research)"):
-                    st.caption("Uses only games preceding each target game. No market-price or fee data; Brier scores measure probability quality, not profit.")
-                    if st.button("Run historical NO backtest",key="run_no_backtest"):
-                        with st.spinner("Evaluating historical NO probabilities..."):
-                            st.session_state["no_backtest_results"]=backtest_no_props(prop_logs,min_games=8)
-                    report=st.session_state.get("no_backtest_results")
-                    if report is not None and not report.empty:
-                        shown=report.copy()
-                        for field in ("Actual_NO","Predicted_NO"):
-                            shown[field]=(shown[field]*100).round(1)
-                        shown["Brier"]=shown["Brier"].round(4)
-                        st.dataframe(shown,hide_index=True,use_container_width=True)
-                        st.caption("Calibration is preliminary. Low-frequency events and small sample sizes can produce misleading confidence.")
+                raise ValueError("Player-prop dataset is missing required columns")
+            prop_logs=prop_logs[prop_logs["GAME_DATE"].astype(str)<today_et].copy()
+            if not prop_logs.empty:
+                multi_no=forecast_props(prop_logs,min_games=no_games)
+                multi_no=multi_no[multi_no["model_no_pct"]>=no_floor].copy()
+                if not schedule.empty:
+                    scheduled_teams=set(schedule["away"])|set(schedule["home"])
+                    multi_no=multi_no[multi_no["team"].isin(scheduled_teams)]
+                if not multi_no.empty:all_no.append(multi_no)
         except Exception as exc:
-            st.warning(f"Multi-stat NO data unavailable: {exc}")
-
+            st.warning(f"Multi-stat NO dataset unavailable: {exc}")
+    else:
+        st.caption("Additional stat categories will populate after the player-prop history collector completes.")
+    candidates=pd.concat(all_no,ignore_index=True) if all_no else pd.DataFrame()
+    if not candidates.empty:
+        candidates=candidates[candidates["prop"].isin(selected_props)].copy()
+        candidates=candidates.sort_values(["model_no_pct","games"],ascending=[False,False]).reset_index(drop=True)
+    if candidates.empty:
+        st.info("No NO forecasts match the selected filters.")
+    else:
+        st.caption(f"{len(candidates):,} model candidates before Kalshi verification. Tap the button to display ONLY exact, currently quoted Kalshi contracts.")
+        if st.button("Search Kalshi · Verify available NO props & prices",key="verify_all_no",type="primary"):
+            with st.spinner("Checking player, stat, threshold, game date and current NO orderbooks..."):
+                try:
+                    # Search the entire filtered set, not merely the first 100 picks.
+                    verified,diagnostics=verify_candidates(candidates,max_quotes=250)
+                    st.session_state["verified_no"]=verified
+                    st.session_state["verified_no_diagnostics"]=diagnostics
+                    st.session_state["verified_no_filter_key"]=(today_et,tuple(selected_props),no_floor,no_games)
+                    st.session_state["verified_no_checked_at"]=dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                except Exception as exc:
+                    st.error(f"Kalshi verification failed: {exc}")
+        current_key=(today_et,tuple(selected_props),no_floor,no_games)
+        verified=st.session_state.get("verified_no")
+        if verified is None or st.session_state.get("verified_no_filter_key")!=current_key:
+            st.info("Kalshi availability and prices have not been checked for these filters. No unverified picks are displayed.")
+        else:
+            available=verified[verified["verification"].eq("MATCHED — QUOTED")].copy()
+            st.caption(f"Verified {st.session_state.get('verified_no_checked_at','')}. Prices are snapshots and may change.")
+            m1,m2,m3=st.columns(3)
+            m1.metric("Kalshi quoted NO picks",len(available))
+            m2.metric("Filtered / unavailable",len(verified)-len(available))
+            m3.metric("Model candidates checked",len(verified))
+            if available.empty:
+                st.warning("No exact, currently quoted Kalshi NO contracts were verified. The market scan may be incomplete; see diagnostics.")
+            else:
+                available=available.sort_values("estimated_edge_pp",ascending=False)
+                available["NO price (¢)"]=pd.to_numeric(available["kalshi_no_ask_cents"],errors="coerce").round(1)
+                available["Model NO %"]=pd.to_numeric(available["model_no_pct"],errors="coerce").round(1)
+                available["Gross edge (pp)"]=pd.to_numeric(available["estimated_edge_pp"],errors="coerce").round(1)
+                cols=["player","team","prop","threshold","Model NO %","NO price (¢)",
+                      "Gross edge (pp)","season_no_pct","last5_no_pct","games","kalshi_ticker"]
+                st.dataframe(available[[c for c in cols if c in available.columns]],
+                    hide_index=True,use_container_width=True)
+                st.download_button("Download available Kalshi NO picks",
+                    available.to_csv(index=False),"milkball_verified_no_picks.csv",key="verified_no_download")
+            with st.expander("Verification diagnostics / excluded contracts"):
+                st.dataframe(verified["verification"].value_counts().rename_axis("Reason").reset_index(name="Count"),
+                    hide_index=True,use_container_width=True)
+                diagnostics=st.session_state.get("verified_no_diagnostics")
+                if diagnostics is not None and not diagnostics.empty:
+                    st.dataframe(diagnostics,hide_index=True,use_container_width=True)
+                st.dataframe(verified[verified["verification"].ne("MATCHED — QUOTED")],
+                    hide_index=True,use_container_width=True)
+            st.caption("Only exact matches with a NO orderbook ask appear. Gross edge excludes fees, slippage and model error. No orders are placed.")
+    if prop_logs is not None and not prop_logs.empty:
+        with st.expander("Historical NO model calibration (research)"):
+            st.caption("Walk-forward test: prior games only; Brier scores evaluate probability accuracy, not trading profit.")
+            if st.button("Run historical NO backtest",key="run_no_backtest"):
+                with st.spinner("Backtesting historical NO forecasts..."):
+                    st.session_state["no_backtest_results"]=backtest_no_props(prop_logs,min_games=8)
+            report=st.session_state.get("no_backtest_results")
+            if report is not None and not report.empty:
+                shown=report.copy()
+                for field in ("Actual_NO","Predicted_NO"):
+                    shown[field]=(shown[field]*100).round(1)
+                shown["Brier"]=shown["Brier"].round(4)
+                st.dataframe(shown,hide_index=True,use_container_width=True)
