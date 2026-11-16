@@ -69,10 +69,11 @@ def fetch_series(props,max_pages=6):
 
 def verify_candidates(candidates, max_quotes=50):
     """Never claim verified when market identity or orderbook cannot be checked."""
-    result=candidates.copy()
+    result=candidates.copy().reset_index(drop=True)
     for col in ("kalshi_ticker","kalshi_no_ask_cents","estimated_edge_pp","verification"):
         result[col]=pd.NA
     if result.empty:return result,pd.DataFrame()
+    result["verification"]="NOT VERIFIED"
     props=list(result["prop"].dropna().unique())
     markets,diagnostics=fetch_series(props)
     if markets.empty:
@@ -81,6 +82,7 @@ def verify_candidates(candidates, max_quotes=50):
     # Kalshi event ticker date token is YYMONDD, e.g. 26NOV16.
     token=dt.datetime.now(ZoneInfo("America/New_York")).strftime("%y%b%d").upper()
     markets=markets[markets.ticker.astype(str).str.upper().str.contains(token,regex=False)]
+    unreliable=set(diagnostics.loc[diagnostics["Status"].isin(["ERROR","TRUNCATED"]),"Prop"]) if not diagnostics.empty else set()
     grouped={}
     for row in markets.itertuples(index=False):
         grouped.setdefault((row.prop,row.player_key,row.threshold),[]).append(row)
@@ -88,6 +90,9 @@ def verify_candidates(candidates, max_quotes=50):
     count=0
     for idx,row in result.iterrows():
         key=(row["prop"],normalized(row["player"]),int(row["threshold"]))
+        if row["prop"] in unreliable:
+            result.at[idx,"verification"]="INCOMPLETE MARKET SCAN"
+            continue
         matches=grouped.get(key,[])
         if not matches:
             result.at[idx,"verification"]="NOT FOUND"
