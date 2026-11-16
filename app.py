@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 from model import player_forecasts, score
 from no_scanner import build_no_candidates
+from no_prop_model import forecast_props, backtest as backtest_no_props
 from tracking import select_candidates, load_predictions, summarize
 from validation import validate_logs, season_hit_rates
 from espn_stats import fetch_espn_logs, ESPNFeedError
@@ -517,6 +518,58 @@ else:
 st.caption("No Kalshi contract prices are attached to this table. High NO probability alone does not establish positive expected value; NO signals are not approved trades.")
 with st.expander("Upcoming NO prop categories"):
     st.write("Points · Rebounds · Assists · Steals · Blocks — awaiting reliable player-game logs and separate chronological validation. No probabilities are fabricated for missing categories.")
+
+st.markdown("#### NO Scanner — Points, Rebounds, Assists, Steals & Blocks")
+st.caption("Experimental count-stat distributions. No Kalshi prices or verified positive edges; do not treat these as approved trades.")
+prop_data_path=Path("data/nba_2026_27_player_props.csv")
+if not prop_data_path.exists():
+    st.info("Player prop history is not collected yet. The scheduled GitHub Actions workflow will backfill completed box scores; you can also run it manually.")
+else:
+    try:
+        prop_logs=pd.read_csv(prop_data_path,dtype={"PLAYER_ID":str,"GAME_ID":str})
+        required_props={"PLAYER_ID","GAME_DATE","GAME_ID","PTS","REB","AST","STL","BLK"}
+        if not required_props.issubset(prop_logs.columns):
+            raise ValueError("Player prop dataset is missing required statistics")
+        prop_logs=prop_logs[prop_logs["GAME_DATE"].astype(str)<dt.datetime.now(
+            __import__("zoneinfo").ZoneInfo("America/New_York")).date().isoformat()]
+        st.caption(f"Saved player-game rows: {len(prop_logs):,}. Data source: completed ESPN box scores.")
+        prop_predictions=forecast_props(prop_logs,min_games=no_games)
+        if prop_predictions.empty:
+            st.info("Not enough complete player-game history to forecast these props.")
+        else:
+            pcol1,pcol2=st.columns(2)
+            with pcol1:
+                selected_props=st.multiselect("NO stat categories",
+                    ["PTS","REB","AST","STL","BLK"],
+                    default=["PTS","REB","AST"],key="no_stat_categories")
+            with pcol2:
+                no_min=st.slider("NO confidence floor (%)",50,99,80,5,key="no_prop_floor")
+            filtered=prop_predictions[
+                prop_predictions["prop"].isin(selected_props)&
+                (prop_predictions["model_no_pct"]>=no_min)].copy()
+            if filtered.empty:
+                st.info("No NO candidates match these settings.")
+            else:
+                st.metric("Multi-stat NO research candidates",len(filtered))
+                st.dataframe(filtered.sort_values("model_no_pct",ascending=False),
+                    hide_index=True,use_container_width=True)
+                st.download_button("Download multi-stat NO research",
+                    filtered.to_csv(index=False),"milkball_multi_stat_no.csv",key="multi_no_download")
+            with st.expander("Historical walk-forward calibration (research)"):
+                st.caption("Uses only games preceding each target game. No market-price or fee data; Brier scores measure probability quality, not profit.")
+                if st.button("Run historical NO backtest",key="run_no_backtest"):
+                    with st.spinner("Evaluating historical NO probabilities..."):
+                        st.session_state["no_backtest_results"]=backtest_no_props(prop_logs,min_games=8)
+                report=st.session_state.get("no_backtest_results")
+                if report is not None and not report.empty:
+                    shown=report.copy()
+                    for field in ("Actual_NO","Predicted_NO"):
+                        shown[field]=(shown[field]*100).round(1)
+                    shown["Brier"]=shown["Brier"].round(4)
+                    st.dataframe(shown,hide_index=True,use_container_width=True)
+                    st.caption("Calibration is preliminary. Low-frequency events and small sample sizes can produce misleading confidence.")
+    except Exception as exc:
+        st.warning(f"Multi-stat NO data unavailable: {exc}")
 
 st.subheader("Player forecasts")
 st.caption("Current 2026–27 regular-season data only. Volume mixture with observed game-to-game variation; 65% season + 35% last-five attempts; beta-binomial shooting accuracy shrunk toward 36%. Uncalibrated; no injury, expected minutes, or opponent adjustment yet.")
