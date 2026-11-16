@@ -1,8 +1,8 @@
 {
   "season": "2026-27",
   "season_type": "regular",
-  "last_checked": "2026-11-15",
-  "through_date": "2026-11-14",
+  "last_checked": "2026-11-16",
+  "through_date": "2026-11-15",
   "completed_game_ids": [
     "401909088",
     "401909089",
@@ -191,13 +191,22 @@
     "401909981",
     "401909982",
     "401909983",
-    "401909984"
+    "401909984",
+    "401909985",
+    "401909986",
+    "401909987",
+    "401909988",
+    "401909989",
+    "401909990",
+    "401909991",
+    "401909992",
+    "401909993"
   ],
-  "games_discovered": 188,
-  "games_stored": 188,
-  "player_game_rows": 4234,
-  "scoreboard_days_success": 45,
-  "scoreboard_days_total": 45,
+  "games_discovered": 197,
+  "games_stored": 197,
+  "player_game_rows": 4433,
+  "scoreboard_days_success": 46,
+  "scoreboard_days_total": 46,
   "failures": [],
   "complete": true
 }
