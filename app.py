@@ -339,27 +339,6 @@ else:
     start_date,end_date=dt.date(2026,10,1),today
 if not settled.empty:
     settled=settled[settled["prediction_date"].between(str(start_date),str(end_date))]
-st.markdown("#### Results by made-threes threshold")
-threshold_choice=st.selectbox("Past performance threshold",
-    ["All thresholds","1+ threes","2+ threes","3+ threes","4+ threes"],
-    key="tracking_threshold")
-# Show every threshold, including thresholds without any settled picks.
-if not settled.empty:
-    threshold_summary=settled.copy()
-    threshold_summary["threshold"]=pd.to_numeric(threshold_summary["threshold"],errors="coerce")
-    threshold_summary["probability"]=pd.to_numeric(threshold_summary["probability"],errors="coerce")
-    threshold_summary["correct_flag"]=threshold_summary["correct"].astype(str).str.lower().eq("true")
-    summary_rows=[]
-    for t in (1,2,3,4):
-        g=threshold_summary[threshold_summary["threshold"]==t]
-        n=len(g)
-        summary_rows.append({"Threshold":f"{t}+","Correct":int(g["correct_flag"].sum()),
-            "Total":n,"Accuracy":round(g["correct_flag"].mean()*100,1) if n else None,
-            "Avg model %":round(g["probability"].mean()*100,1) if n else None})
-    st.dataframe(pd.DataFrame(summary_rows),hide_index=True,use_container_width=True)
-if threshold_choice!="All thresholds":
-    selected_threshold=int(threshold_choice[0])
-    settled=settled[pd.to_numeric(settled["threshold"],errors="coerce")==selected_threshold].copy()
 if not settled.empty:
     correct=settled["correct"].astype(str).str.lower().eq("true")
     a,b,d=st.columns(3)
@@ -404,7 +383,7 @@ if not settled.empty:
         st.dataframe(view.sort_values("prediction_date",ascending=False),hide_index=True,use_container_width=True)
     st.download_button("Download tracked results",settled.to_csv(index=False),"scanner_milk_model_results.csv",key="track_download")
 else:
-    st.info("No settled pregame predictions for this threshold and period yet.")
+    st.info("No settled pregame predictions for this period yet.")
     if not tracked.empty:
         st.caption(f"{int(tracked['correct'].isna().sum())} predictions are awaiting completed player boxscores.")
 st.caption("Tracking starts with saved prospective predictions; it does not backfill hypothetical historical picks. Missing player boxscores remain ungraded.")
