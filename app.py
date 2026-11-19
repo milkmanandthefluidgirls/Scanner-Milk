@@ -321,22 +321,25 @@ if forecasts.empty:
     st.warning("No qualifying player logs.")
     st.stop()
 # Curated model estimates and prospective results directly beneath matchups.
-st.subheader("Model results tracker")
-st.caption("Only predictions saved before games are graded. Historical season hit rates are not counted as model wins.")
+st.subheader("NO model results tracker")
+st.caption("NO predictions only, beginning yesterday. Older YES-model results are excluded, not deleted.")
+today=dt.datetime.now(__import__("zoneinfo").ZoneInfo("America/New_York")).date()
+no_tracking_start=today-dt.timedelta(days=1)
 tracked=load_predictions()
+tracked=tracked[(tracked["side"].astype(str).str.upper()=="NO") &
+                (tracked["prediction_date"].astype(str)>=no_tracking_start.isoformat())].copy()
 settled=tracked[tracked["correct"].notna()].copy()
 period=st.selectbox("Results period",["Last 7 days","Last 30 days","This season","Custom dates"],index=1,key="tracking_period")
-today=dt.datetime.now(dt.timezone.utc).date()
 if period=="Custom dates":
     d1,d2=st.columns(2)
-    start_date=d1.date_input("From",value=today-dt.timedelta(days=30),key="track_from")
+    start_date=d1.date_input("From",value=no_tracking_start,min_value=no_tracking_start,key="track_from")
     end_date=d2.date_input("To",value=today,key="track_to")
 elif period=="Last 7 days":
-    start_date,end_date=today-dt.timedelta(days=6),today
+    start_date,end_date=max(no_tracking_start,today-dt.timedelta(days=6)),today
 elif period=="Last 30 days":
-    start_date,end_date=today-dt.timedelta(days=29),today
+    start_date,end_date=max(no_tracking_start,today-dt.timedelta(days=29)),today
 else:
-    start_date,end_date=dt.date(2026,10,1),today
+    start_date,end_date=no_tracking_start,today
 if not settled.empty:
     settled=settled[settled["prediction_date"].between(str(start_date),str(end_date))]
 if not settled.empty:
@@ -371,7 +374,7 @@ if not settled.empty:
         st.caption("Difference (pp) = actual accuracy minus average predicted probability. Positive means outcomes exceeded forecasts.")
     else:
         st.info("No settled predictions with valid probabilities in this period.")
-    st.caption("Older snapshots saved only 90%+ predictions. Lower tiers populate from newer snapshots; no retrospective picks are invented.")
+    st.caption("NO predictions are tracked only from the new cutoff; prior YES-model results remain archived.")
     if len(settled)<100:
         st.warning(f"Calibration sample is small ({len(settled)} settled predictions). Do not change model probabilities based on these results alone.")
     daily=summarize(settled)
@@ -383,7 +386,7 @@ if not settled.empty:
         st.dataframe(view.sort_values("prediction_date",ascending=False),hide_index=True,use_container_width=True)
     st.download_button("Download tracked results",settled.to_csv(index=False),"scanner_milk_model_results.csv",key="track_download")
 else:
-    st.info("No settled pregame predictions for this period yet.")
+    st.info("No settled NO predictions since yesterday yet. Older YES results are intentionally hidden.")
     if not tracked.empty:
         st.caption(f"{int(tracked['correct'].isna().sum())} predictions are awaiting completed player boxscores.")
 st.caption("Tracking starts with saved prospective predictions; it does not backfill hypothetical historical picks. Missing player boxscores remain ungraded.")
