@@ -58,13 +58,13 @@ def append_snapshot(predictions, forecasts, teams, prediction_date, now=None):
     """Append only once per date; never retroactively generate 'predictions'."""
     if not teams or prediction_date in set(predictions["prediction_date"].dropna().astype(str)):
         return predictions
-    # Archive every 70%+ YES threshold for confidence-tier evaluation.
+    # Archive prospective 70%+ NO three-point thresholds for confidence-tier evaluation.
     picks=forecasts[forecasts["team"].isin(teams)].copy()
     picks=picks[(picks["games"]>=5) & (picks["projected_pa"]>=1.5) &
-                (picks["fair_yes"]>=.70)].copy()
+                (picks["fair_no"]>=.70)].copy()
     if picks.empty:return predictions
-    picks["side"]="YES"
-    picks["probability"]=picks["fair_yes"]
+    picks["side"]="NO"
+    picks["probability"]=picks["fair_no"]
     picks=picks.drop_duplicates(["player_id","threshold"]).sort_values(
         ["probability","games"],ascending=False)
     stamp=(now or dt.datetime.now(dt.timezone.utc)).isoformat()
