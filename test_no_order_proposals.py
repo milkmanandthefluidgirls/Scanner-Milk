@@ -28,6 +28,16 @@ class ProposalTests(unittest.TestCase):
         p=propose_no_orders(self.quotes[self.quotes.kalshi_ticker!="A"],
              min_probability=.90,min_gross_edge_pp=5,max_price_cents=90,budget_dollars=10)
         self.assertEqual(set(p.kalshi_ticker),{"B","C"})
+    def test_budget_increases_quantities_without_more_tickers(self):
+        small=propose_no_orders(self.quotes,min_probability=.90,
+            min_gross_edge_pp=5,max_price_cents=90,budget_dollars=3)
+        large=propose_no_orders(self.quotes,min_probability=.90,
+            min_gross_edge_pp=5,max_price_cents=90,budget_dollars=50)
+        self.assertEqual(len(small),3)
+        self.assertEqual(len(large),3)
+        self.assertGreater(large.contracts.sum(),small.contracts.sum())
+        self.assertGreater(large.max_cost_dollars.sum(),small.max_cost_dollars.sum())
+        self.assertLessEqual(large.max_cost_dollars.sum(),50)
     def test_empty(self):
         p=propose_no_orders(self.quotes,min_probability=.99)
         self.assertTrue(p.empty)
