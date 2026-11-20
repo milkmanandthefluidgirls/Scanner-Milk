@@ -42,7 +42,13 @@ class KalshiTrader:
     def request(self,method,path,body=None):
         response=requests.request(method,HOSTS[self.environment]+ROOT+path,
             headers=self._headers(method,path),json=body,timeout=20)
-        response.raise_for_status()
+        if not response.ok:
+            try:
+                detail=response.json()
+                detail=str(detail)[:500]
+            except ValueError:
+                detail=response.text[:300]
+            raise ValueError(f"Kalshi HTTP {response.status_code}: {detail}")
         return response.json()
 
     def balance(self):
@@ -59,5 +65,6 @@ class KalshiTrader:
         if yes_price<=0 or yes_price>=1:raise ValueError("Invalid YES price")
         body={"ticker":ticker,"client_order_id":client_order_id or str(uuid.uuid4()),
               "side":"ask","count":f"{n:.2f}","price":f"{yes_price:.4f}",
-              "time_in_force":"immediate_or_cancel"}
+              "time_in_force":"immediate_or_cancel",
+              "self_trade_prevention_type":"taker_at_cross"}
         return self.request("POST","/portfolio/events/orders",body)
