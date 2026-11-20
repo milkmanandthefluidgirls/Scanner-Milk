@@ -387,10 +387,13 @@ with no_picks_slot:
             # Keep manual removals across reruns, and fill the remaining budget
             # with the next eligible picks after exclusions.
             proposal_source=available.copy()
-            proposal=propose_no_orders(proposal_source,min_probability=min_order_prob/100,
-                min_gross_edge_pp=min_order_edge,max_price_cents=max_order_price,
-                max_orders=None,contracts_each=int(contracts_each),
-                budget_dollars=float(order_budget))
+            try:
+                proposal=propose_no_orders(proposal_source,min_probability=min_order_prob/100,
+                    min_gross_edge_pp=min_order_edge,max_price_cents=max_order_price,
+                    contracts_each=int(contracts_each),budget_dollars=float(order_budget))
+            except Exception as exc:
+                st.error(f"Order proposal calculation failed: {type(exc).__name__}: {exc}")
+                proposal=pd.DataFrame()
             # Keep manual removals across Streamlit reruns, but reset when the
             # underlying verified quote snapshot or model filters change.
             removal_scope=(st.session_state.get("verified_no_checked_at"),current_key,
@@ -401,10 +404,13 @@ with no_picks_slot:
             removed=set(st.session_state.get("no_removed_tickers",[]))
             if removed:
                 proposal_source=proposal_source[~proposal_source["kalshi_ticker"].astype(str).isin(removed)].copy()
-                proposal=propose_no_orders(proposal_source,min_probability=min_order_prob/100,
-                    min_gross_edge_pp=min_order_edge,max_price_cents=max_order_price,
-                    max_orders=None,contracts_each=int(contracts_each),
-                    budget_dollars=float(order_budget))
+                try:
+                    proposal=propose_no_orders(proposal_source,min_probability=min_order_prob/100,
+                        min_gross_edge_pp=min_order_edge,max_price_cents=max_order_price,
+                        contracts_each=int(contracts_each),budget_dollars=float(order_budget))
+                except Exception as exc:
+                    st.error(f"Order proposal refresh failed: {type(exc).__name__}: {exc}")
+                    proposal=pd.DataFrame()
             if removed:
                 if st.button("Restore removed picks",key="restore_no_picks"):
                     st.session_state["no_removed_tickers"]=[]
