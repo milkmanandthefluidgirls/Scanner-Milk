@@ -476,25 +476,51 @@ with no_picks_slot:
                 st.download_button("Download available Kalshi NO picks",
                     available.to_csv(index=False),"milkball_verified_no_picks.csv",key="verified_no_download")
             st.markdown("#### Automatic NO picks — review before ordering")
-            st.caption("Milkball selects qualifying contracts automatically. PAPER MODE ONLY: no real Kalshi orders are submitted.")
+            st.caption("Milkball proposes qualifying contracts automatically. Review and remove picks before approving any demo or live orders.")
             p1,p2,p3=st.columns(3)
             with p1:
                 min_order_prob=st.slider("Minimum NO probability (%)",70,99,90,1,key="order_min_prob")
                 max_order_price=st.slider("Maximum NO price (¢)",30,99,80,1,key="order_max_price")
             with p2:
                 min_order_edge=st.slider("Minimum gross edge (percentage points)",1,30,10,1,key="order_min_edge")
-                order_count=st.number_input("Maximum picks",1,10,3,1,key="order_count")
+
             with p3:
                 order_budget=st.number_input("Maximum total spend ($)",min_value=1.,max_value=500.,value=10.,step=1.,key="order_budget")
                 contracts_each=st.number_input("Contracts per pick",1,100,1,1,key="contracts_each")
             proposal=propose_no_orders(available,min_probability=min_order_prob/100,
                 min_gross_edge_pp=min_order_edge,max_price_cents=max_order_price,
-                max_orders=int(order_count),contracts_each=int(contracts_each),
+                max_orders=None,contracts_each=int(contracts_each),
                 budget_dollars=float(order_budget))
+            # Keep manual removals across Streamlit reruns, but reset when the
+            # underlying verified quote snapshot or model filters change.
+            removal_scope=(st.session_state.get("verified_no_checked_at"),current_key,
+                min_order_prob,max_order_price,min_order_edge,float(order_budget),int(contracts_each))
+            if st.session_state.get("no_removal_scope")!=removal_scope:
+                st.session_state["no_removal_scope"]=removal_scope
+                st.session_state["no_removed_tickers"]=[]
+            removed=set(st.session_state.get("no_removed_tickers",[]))
+            if not proposal.empty:
+                proposal=proposal[~proposal["kalshi_ticker"].astype(str).isin(removed)].copy()
+            if removed:
+                if st.button("Restore removed picks",key="restore_no_picks"):
+                    st.session_state["no_removed_tickers"]=[]
+                    st.rerun()
             if proposal.empty:
-                st.info("No verified NO contracts meet the automatic selection and budget rules.")
+                st.info("No remaining verified NO contracts meet the selection and budget rules.")
             else:
-                st.dataframe(proposal,hide_index=True,use_container_width=True)
+                st.caption("Remove any pick before approving. Removed picks stay excluded until you restore them or refresh the selection.")
+                for _,pick in proposal.iterrows():
+                    details,remove_col=st.columns([5,1],vertical_alignment="center")
+                    with details:
+                        st.write(f"**{pick['player']}** · {pick['prop']} {pick['threshold']}+ · NO · {pick['kalshi_no_ask_cents']:.1f}¢ · {pick['model_no_pct']:.1f}% model · {pick['contracts']} contract(s)")
+                    with remove_col:
+                        if st.button("✕ Remove",key=f"remove_no_{pick['kalshi_ticker']}",use_container_width=True):
+                            st.session_state["no_removed_tickers"].append(str(pick["kalshi_ticker"]))
+                            st.session_state.pop("paper_no_orders",None)
+                            st.session_state.pop("kalshi_execution_results",None)
+                            st.rerun()
+                with st.expander("Full order details"):
+                    st.dataframe(proposal,hide_index=True,use_container_width=True)
                 st.metric("Maximum proposed purchase cost",f"${proposal['max_cost_dollars'].sum():.2f}")
                 st.caption("Price snapshot only. No fees included; the model is not yet validated for live trading.")
                 approval=st.checkbox("I have reviewed the proposed picks and understand this is a simulation.",key="paper_approval")
@@ -573,7 +599,7 @@ with no_picks_slot:
                     st.dataframe(diagnostics,hide_index=True,use_container_width=True)
                 st.dataframe(verified[verified["verification"].ne("MATCHED — QUOTED")],
                     hide_index=True,use_container_width=True)
-            st.caption("Only exact matches with a NO orderbook ask appear. Gross edge excludes fees, slippage and model error. No orders are placed.")
+            st.caption("Only exact matches with a NO orderbook ask appear. Gross edge excludes fees, slippage and model error. Orders are submitted only when explicitly confirmed in the execution section.")
     if prop_logs is not None and not prop_logs.empty:
         with st.expander("Historical NO model calibration (research)"):
             st.caption("Walk-forward test: prior games only; Brier scores evaluate probability accuracy, not trading profit.")
