@@ -13,7 +13,9 @@ import importlib
 import no_order_proposals
 importlib.reload(no_order_proposals)
 propose_no_orders = no_order_proposals.propose_no_orders
-from kalshi_trader import KalshiTrader
+import kalshi_trader
+importlib.reload(kalshi_trader)
+KalshiTrader = kalshi_trader.KalshiTrader
 from tracking import select_candidates, load_predictions, summarize
 from validation import validate_logs, season_hit_rates
 from espn_stats import fetch_espn_logs, ESPNFeedError
@@ -538,12 +540,13 @@ with no_picks_slot:
                                     "fill_count":order.get("fill_count",""),
                                     "remaining_count":order.get("remaining_count","")})
                             except Exception as exc:
-                                results.append({"ticker":pick["kalshi_ticker"],"status":f"ERROR: {exc}"})
+                                results.append({"ticker":pick["kalshi_ticker"],"status":f"ERROR: {type(exc).__name__}: {exc}"})
                                 # Stop on unknown execution outcome to avoid duplicates.
                                 break
                         st.session_state["kalshi_execution_results"]=pd.DataFrame(results)
                     except Exception as exc:
                         st.error(f"Re-verification failed; no orders submitted in this attempt: {exc}")
+                st.caption("Kalshi order client: v2 diagnostics · API rejection details shown in the execution results")
                 if "kalshi_execution_results" in st.session_state:
                     st.dataframe(st.session_state["kalshi_execution_results"],hide_index=True,use_container_width=True)
             with st.expander("Verification diagnostics / excluded contracts"):
