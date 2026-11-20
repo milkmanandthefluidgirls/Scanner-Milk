@@ -366,7 +366,28 @@ with no_picks_slot:
             with p3:
                 order_budget=st.number_input("Maximum total spend ($)",min_value=1.,max_value=500.,value=10.,step=1.,key="order_budget")
                 contracts_each=st.number_input("Contracts per pick",1,100,1,1,key="contracts_each")
-            proposal=propose_no_orders(available,min_probability=min_order_prob/100,
+            # Show why an automatic order list may be empty rather than silently
+            # hiding the available contracts behind strict probability/price rules.
+            eligible=available.copy()
+            for col in ("model_no_pct","kalshi_no_ask_cents","estimated_edge_pp"):
+                eligible[col]=pd.to_numeric(eligible[col],errors="coerce")
+            eligible=eligible[(eligible["model_no_pct"]>=min_order_prob)&
+                (eligible["kalshi_no_ask_cents"]>0)&
+                (eligible["kalshi_no_ask_cents"]<=max_order_price)&
+                (eligible["estimated_edge_pp"]>=min_order_edge)].copy()
+            eligible=eligible.sort_values(["estimated_edge_pp","model_no_pct"],
+                ascending=False).drop_duplicates(subset=["player"])
+            st.caption(f"Verified available: {len(available)} · Meet probability, price and edge rules: {len(eligible)}")
+            if eligible.empty and not available.empty:
+                st.warning("No verified picks satisfy all three limits. The controls above are filters, not guarantees. Adjust them or verify new quotes.")
+                with st.expander("See why picks were excluded"):
+                    st.write(f"Below model probability: {int((pd.to_numeric(available['model_no_pct'],errors='coerce')<min_order_prob).sum())}")
+                    st.write(f"Above maximum NO price: {int((pd.to_numeric(available['kalshi_no_ask_cents'],errors='coerce')>max_order_price).sum())}")
+                    st.write(f"Below minimum gross edge: {int((pd.to_numeric(available['estimated_edge_pp'],errors='coerce')<min_order_edge).sum())}")
+            # Keep manual removals across reruns, and fill the remaining budget
+            # with the next eligible picks after exclusions.
+            proposal_source=available.copy()
+            proposal=propose_no_orders(proposal_source,min_probability=min_order_prob/100,
                 min_gross_edge_pp=min_order_edge,max_price_cents=max_order_price,
                 max_orders=None,contracts_each=int(contracts_each),
                 budget_dollars=float(order_budget))
@@ -378,14 +399,18 @@ with no_picks_slot:
                 st.session_state["no_removal_scope"]=removal_scope
                 st.session_state["no_removed_tickers"]=[]
             removed=set(st.session_state.get("no_removed_tickers",[]))
-            if not proposal.empty:
-                proposal=proposal[~proposal["kalshi_ticker"].astype(str).isin(removed)].copy()
+            if removed:
+                proposal_source=proposal_source[~proposal_source["kalshi_ticker"].astype(str).isin(removed)].copy()
+                proposal=propose_no_orders(proposal_source,min_probability=min_order_prob/100,
+                    min_gross_edge_pp=min_order_edge,max_price_cents=max_order_price,
+                    max_orders=None,contracts_each=int(contracts_each),
+                    budget_dollars=float(order_budget))
             if removed:
                 if st.button("Restore removed picks",key="restore_no_picks"):
                     st.session_state["no_removed_tickers"]=[]
                     st.rerun()
             if proposal.empty:
-                st.info("No remaining verified NO contracts meet the selection and budget rules.")
+                st.info("No picks to order. Check the verification results, probability/price/edge filters, and whether the spending budget covers one contract.")
             else:
                 st.caption("Remove any pick before approving. Removed picks stay excluded until you restore them or refresh the selection.")
                 for _,pick in proposal.iterrows():
