@@ -7,7 +7,12 @@ from model import player_forecasts, score
 from no_scanner import build_no_candidates
 from no_prop_model import forecast_props, backtest as backtest_no_props
 from kalshi_no_verify import verify_candidates
-from no_order_proposals import propose_no_orders
+# Streamlit reruns app.py but can retain imported helper modules in sys.modules.
+# Reload the allocator so a deployed helper update actually takes effect.
+import importlib
+import no_order_proposals
+importlib.reload(no_order_proposals)
+propose_no_orders = no_order_proposals.propose_no_orders
 from kalshi_trader import KalshiTrader
 from tracking import select_candidates, load_predictions, summarize
 from validation import validate_logs, season_hit_rates
@@ -442,6 +447,18 @@ with no_picks_slot:
                             st.session_state.pop("paper_no_orders",None)
                             st.session_state.pop("kalshi_execution_results",None)
                             st.rerun()
+            # Verify the proposal respects the current budget and actually
+            # allocates it. Fail closed rather than showing a stale $2.31 order.
+            if not proposal.empty:
+                selected_contracts=int(pd.to_numeric(proposal["contracts"],errors="coerce").sum())
+                if float(order_budget)>10 and selected_contracts==len(proposal) and len(proposal)>0:
+                    st.error("Order allocator is still returning one contract per pick despite the larger budget. Live submission is blocked until this is resolved.")
+                    st.session_state["no_allocator_error"]=True
+                else:
+                    st.session_state["no_allocator_error"]=False
+            else:
+                st.session_state["no_allocator_error"]=False
+            st.caption("Order allocator: v3 · live quantity allocation")
             selected_cost=float(proposal["max_cost_dollars"].sum()) if not proposal.empty else 0.0
             st.markdown(f"##### Orders selected within budget ({len(proposal)})")
             st.caption(f"Budget: ${float(order_budget):.2f} · Minimum per pick: {int(contracts_each)} · Selected cost: ${selected_cost:.2f} · Remaining: ${max(0.0,float(order_budget)-selected_cost):.2f}")
@@ -489,7 +506,7 @@ with no_picks_slot:
                     phrase=st.text_input("Type PLACE LIVE ORDERS to authorize real-money trading",key="kalshi_live_phrase")
                 else:
                     phrase="PLACE LIVE ORDERS"
-                enabled=trader is not None and acknowledge and phrase=="PLACE LIVE ORDERS"
+                enabled=trader is not None and acknowledge and phrase=="PLACE LIVE ORDERS" and not st.session_state.get("no_allocator_error",False)
                 if st.button(f"Submit {trade_mode.upper()} NO limit orders",disabled=not enabled,key="submit_kalshi_orders"):
                     # Re-verify all candidate markets and reject stale/unavailable quotes.
                     try:
