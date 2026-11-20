@@ -23,7 +23,7 @@ def propose_no_orders(verified,min_probability=0.85,min_gross_edge_pp=8.,
     data=data.sort_values(["estimated_edge_pp","model_no_pct"],ascending=False)
     # Limit correlation from repeated thresholds of the same player.
     data=data.drop_duplicates(subset=["player"],keep="first")
-    remaining=round(float(budget_dollars)*100)
+    # Older Streamlit sessions may still pass a nonnumeric maximum-picks value.\n    # The current UI intentionally has no maximum-picks limit.\n    max_orders=None\n    remaining=round(float(budget_dollars)*100)
     selected=[]
     for _,row in data.iterrows():
         if max_orders is not None and len(selected)>=max_orders:break
