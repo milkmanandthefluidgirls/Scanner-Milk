@@ -7,6 +7,7 @@ from model import player_forecasts, score
 from no_scanner import build_no_candidates
 from no_prop_model import forecast_props, backtest as backtest_no_props
 from kalshi_no_verify import verify_candidates
+from no_order_proposals import propose_no_orders
 from tracking import select_candidates, load_predictions, summarize
 from validation import validate_logs, season_hit_rates
 from espn_stats import fetch_espn_logs, ESPNFeedError
@@ -473,6 +474,32 @@ with no_picks_slot:
                     hide_index=True,use_container_width=True)
                 st.download_button("Download available Kalshi NO picks",
                     available.to_csv(index=False),"milkball_verified_no_picks.csv",key="verified_no_download")
+            st.markdown("#### Automatic NO picks — review before ordering")
+            st.caption("Milkball selects qualifying contracts automatically. PAPER MODE ONLY: no real Kalshi orders are submitted.")
+            p1,p2,p3=st.columns(3)
+            with p1:
+                min_order_prob=st.slider("Minimum NO probability (%)",70,99,90,1,key="order_min_prob")
+                max_order_price=st.slider("Maximum NO price (¢)",30,99,80,1,key="order_max_price")
+            with p2:
+                min_order_edge=st.slider("Minimum gross edge (percentage points)",1,30,10,1,key="order_min_edge")
+                order_count=st.number_input("Maximum picks",1,10,3,1,key="order_count")
+            with p3:
+                order_budget=st.number_input("Maximum total spend ($)",min_value=1.,max_value=500.,value=10.,step=1.,key="order_budget")
+                contracts_each=st.number_input("Contracts per pick",1,100,1,1,key="contracts_each")
+            proposal=propose_no_orders(available,min_probability=min_order_prob/100,
+                min_gross_edge_pp=min_order_edge,max_price_cents=max_order_price,
+                max_orders=int(order_count),contracts_each=int(contracts_each),
+                budget_dollars=float(order_budget))
+            if proposal.empty:
+                st.info("No verified NO contracts meet the automatic selection and budget rules.")
+            else:
+                st.dataframe(proposal,hide_index=True,use_container_width=True)
+                st.metric("Maximum proposed purchase cost",f"${proposal['max_cost_dollars'].sum():.2f}")
+                st.caption("Price snapshot only. No fees included; the model is not yet validated for live trading.")
+                approval=st.checkbox("I have reviewed the proposed picks and understand this is a simulation.",key="paper_approval")
+                if st.button("Approve paper-trade picks",disabled=not approval,key="approve_paper"):
+                    st.session_state["paper_no_orders"]=proposal.copy()
+                    st.success("Paper picks recorded in this browser session. No Kalshi orders were placed.")
             with st.expander("Verification diagnostics / excluded contracts"):
                 st.dataframe(verified["verification"].value_counts().rename_axis("Reason").reset_index(name="Count"),
                     hide_index=True,use_container_width=True)
