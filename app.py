@@ -365,7 +365,7 @@ with no_picks_slot:
 
             with p3:
                 order_budget=st.number_input("Maximum total spend ($)",min_value=1.,max_value=500.,value=10.,step=1.,key="order_budget")
-                contracts_each=st.number_input("Contracts per pick",1,100,1,1,key="contracts_each")
+                contracts_each=st.number_input("Minimum contracts per pick",1,100,1,1,key="contracts_each")
             # Show why an automatic order list may be empty rather than silently
             # hiding the available contracts behind strict probability/price rules.
             eligible=available.copy()
@@ -444,9 +444,9 @@ with no_picks_slot:
                             st.rerun()
             selected_cost=float(proposal["max_cost_dollars"].sum()) if not proposal.empty else 0.0
             st.markdown(f"##### Orders selected within budget ({len(proposal)})")
-            st.caption(f"Budget: ${float(order_budget):.2f} · Contracts per pick: {int(contracts_each)} · Selected cost: ${selected_cost:.2f} · Remaining: ${max(0.0,float(order_budget)-selected_cost):.2f}")
+            st.caption(f"Budget: ${float(order_budget):.2f} · Minimum per pick: {int(contracts_each)} · Selected cost: ${selected_cost:.2f} · Remaining: ${max(0.0,float(order_budget)-selected_cost):.2f}")
             if len(proposal)==len(eligible) and len(proposal)>0:
-                st.info("All distinct qualifying contracts are already selected. Raising the budget alone will not increase the order amount while Contracts per pick remains unchanged.")
+                st.info("All distinct qualifying contracts are already selected. Increasing the budget now increases contract quantities across these markets, up to 100 per market.")
             order_signature=(float(order_budget),int(contracts_each),tuple(
                 (str(p["kalshi_ticker"]),int(p["contracts"]),float(p["kalshi_no_ask_cents"]))
                 for _,p in proposal.iterrows()))
@@ -460,7 +460,7 @@ with no_picks_slot:
             else:
                 st.dataframe(proposal,hide_index=True,use_container_width=True)
                 st.metric("Maximum proposed purchase cost",f"${proposal['max_cost_dollars'].sum():.2f}")
-                st.caption("Only the picks in this order table can be submitted. Prices are snapshots; fees are excluded.")
+                st.caption("Only these orders can be submitted. Larger budgets automatically increase quantities and financial exposure; prices are snapshots and fees are excluded.")
                 approval=st.checkbox("I have reviewed the proposed picks and understand this is a simulation.",key="paper_approval")
                 if st.button("Approve paper-trade picks",disabled=not approval,key="approve_paper"):
                     st.session_state["paper_no_orders"]=proposal.copy()
