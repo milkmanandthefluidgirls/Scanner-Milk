@@ -7,7 +7,7 @@ import math
 import pandas as pd
 
 def propose_no_orders(verified,min_probability=0.85,min_gross_edge_pp=8.,
-                      max_price_cents=85.,max_orders=3,contracts_each=1,
+                      max_price_cents=85.,max_orders=None,contracts_each=1,
                       budget_dollars=10.):
     cols=["player","prop","threshold","kalshi_ticker","model_no_pct",
           "kalshi_no_ask_cents","estimated_edge_pp","contracts","max_cost_dollars"]
@@ -26,7 +26,7 @@ def propose_no_orders(verified,min_probability=0.85,min_gross_edge_pp=8.,
     remaining=round(float(budget_dollars)*100)
     selected=[]
     for _,row in data.iterrows():
-        if len(selected)>=max_orders:break
+        if max_orders is not None and len(selected)>=max_orders:break
         cost=math.ceil(float(row["kalshi_no_ask_cents"])*contracts_each)
         if cost>remaining:continue
         item={k:row[k] for k in cols if k in row}
