@@ -182,12 +182,8 @@ if saved_path.exists():
         if manifest_path.exists():
             manifest=json.loads(manifest_path.read_text())
 
-            if not manifest.get("complete",False):
-
     except Exception as exc:
         st.session_state["saved_stats_error"]=str(exc)
-if logs is None:
-
 if logs is None or logs.empty:
     st.error("Current-season game logs are unavailable. Open Research & data diagnostics below.")
     st.stop()
