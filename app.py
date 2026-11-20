@@ -376,7 +376,7 @@ with no_picks_slot:
                 (eligible["kalshi_no_ask_cents"]<=max_order_price)&
                 (eligible["estimated_edge_pp"]>=min_order_edge)].copy()
             eligible=eligible.sort_values(["estimated_edge_pp","model_no_pct"],
-                ascending=False).drop_duplicates(subset=["player"])
+                ascending=False)
             st.caption(f"Verified available: {len(available)} · Meet probability, price and edge rules: {len(eligible)}")
             if eligible.empty and not available.empty:
                 st.warning("No verified picks satisfy all three limits. The controls above are filters, not guarantees. Adjust them or verify new quotes.")
@@ -415,24 +415,35 @@ with no_picks_slot:
                 if st.button("Restore removed picks",key="restore_no_picks"):
                     st.session_state["no_removed_tickers"]=[]
                     st.rerun()
-            if proposal.empty:
-                st.info("No picks to order. Check the verification results, probability/price/edge filters, and whether the spending budget covers one contract.")
+            # Display EVERY qualifying market, even if it cannot fit in the
+            # current budget. The execution list is separately budget-limited.
+            visible_eligible=eligible[
+                ~eligible["kalshi_ticker"].astype(str).isin(removed)].copy()
+            proposed_tickers=set(proposal["kalshi_ticker"].astype(str)) if not proposal.empty else set()
+            st.markdown(f"##### All qualifying picks ({len(visible_eligible)})")
+            st.caption("Every contract meeting your filters appears here. 'In order' means it is included in the budget-limited execution list. Remove any pick to exclude it.")
+            if visible_eligible.empty:
+                st.info("No qualifying picks remain. Use Restore removed picks or adjust filters.")
             else:
-                st.caption("Remove any pick before approving. Removed picks stay excluded until you restore them or refresh the selection.")
-                for _,pick in proposal.iterrows():
-                    details,remove_col=st.columns([5,1],vertical_alignment="center")
-                    with details:
-                        st.write(f"**{pick['player']}** · {pick['prop']} {pick['threshold']}+ · NO · {pick['kalshi_no_ask_cents']:.1f}¢ · {pick['model_no_pct']:.1f}% model · {pick['contracts']} contract(s)")
-                    with remove_col:
-                        if st.button("✕ Remove",key=f"remove_no_{pick['kalshi_ticker']}",use_container_width=True):
-                            st.session_state["no_removed_tickers"].append(str(pick["kalshi_ticker"]))
+                for _,pick in visible_eligible.iterrows():
+                    ticker=str(pick["kalshi_ticker"])
+                    in_order=ticker in proposed_tickers
+                    label="IN ORDER" if in_order else "NOT IN ORDER (budget or same player)"
+                    with st.container(border=True):
+                        st.write(f"**{pick['player']}** · {pick['prop']} {pick['threshold']}+ · NO")
+                        st.caption(f"{pick['kalshi_no_ask_cents']:.1f}¢ · {pick['model_no_pct']:.1f}% model · {pick['estimated_edge_pp']:.1f} pp gross edge · {label}")
+                        if st.button("✕ Remove",key=f"remove_no_{ticker}",use_container_width=True):
+                            st.session_state["no_removed_tickers"].append(ticker)
                             st.session_state.pop("paper_no_orders",None)
                             st.session_state.pop("kalshi_execution_results",None)
                             st.rerun()
-                with st.expander("Full order details"):
-                    st.dataframe(proposal,hide_index=True,use_container_width=True)
+            st.markdown(f"##### Orders selected within budget ({len(proposal)})")
+            if proposal.empty:
+                st.info("No picks are currently selected for ordering within the spending limit.")
+            else:
+                st.dataframe(proposal,hide_index=True,use_container_width=True)
                 st.metric("Maximum proposed purchase cost",f"${proposal['max_cost_dollars'].sum():.2f}")
-                st.caption("Price snapshot only. No fees included; the model is not yet validated for live trading.")
+                st.caption("Only the picks in this order table can be submitted. Prices are snapshots; fees are excluded.")
                 approval=st.checkbox("I have reviewed the proposed picks and understand this is a simulation.",key="paper_approval")
                 if st.button("Approve paper-trade picks",disabled=not approval,key="approve_paper"):
                     st.session_state["paper_no_orders"]=proposal.copy()
