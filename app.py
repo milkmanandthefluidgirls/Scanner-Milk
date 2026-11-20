@@ -8,6 +8,7 @@ from no_scanner import build_no_candidates
 from no_prop_model import forecast_props, backtest as backtest_no_props
 from kalshi_no_verify import verify_candidates
 from no_order_proposals import propose_no_orders
+from kalshi_trader import KalshiTrader
 from tracking import select_candidates, load_predictions, summarize
 from validation import validate_logs, season_hit_rates
 from espn_stats import fetch_espn_logs, ESPNFeedError
@@ -500,6 +501,70 @@ with no_picks_slot:
                 if st.button("Approve paper-trade picks",disabled=not approval,key="approve_paper"):
                     st.session_state["paper_no_orders"]=proposal.copy()
                     st.success("Paper picks recorded in this browser session. No Kalshi orders were placed.")
+            st.markdown("##### Kalshi account connection & order execution")
+            st.caption("Credentials must be added to Streamlit Secrets. Default is DEMO. Never paste a private key into the app or GitHub.")
+            trade_mode=st.selectbox("Trading environment",["demo","production"],key="trade_mode")
+            secrets_group="kalshi_demo" if trade_mode=="demo" else "kalshi_production"
+            try:
+                credentials=st.secrets[secrets_group]
+                trader=KalshiTrader(credentials["key_id"],credentials["private_key_pem"],trade_mode)
+                st.success(f"{trade_mode.title()} credentials configured")
+            except Exception:
+                trader=None
+                st.info(f"Configure [{secrets_group}] key_id and private_key_pem in Streamlit Secrets to enable trading.")
+            if trader is not None and st.button("Check Kalshi account balance",key="check_kalshi_balance"):
+                try:
+                    balance=trader.balance()
+                    st.write("Available balance (cents):",balance.get("balance","Unavailable"))
+                except Exception as exc:
+                    st.error(f"Account check failed: {exc}")
+            if not proposal.empty:
+                st.warning("Orders are immediate-or-cancel limits; fills may be partial. Prices must be refreshed immediately before approval. Fee estimates are NOT included.")
+                acknowledge=st.checkbox(f"I approve up to ${proposal['max_cost_dollars'].sum():.2f} in {trade_mode.upper()} NO orders for the exact listed contracts.",key="kalshi_trade_ack")
+                if trade_mode=="production":
+                    phrase=st.text_input("Type PLACE LIVE ORDERS to authorize real-money trading",key="kalshi_live_phrase")
+                else:
+                    phrase="PLACE LIVE ORDERS"
+                enabled=trader is not None and acknowledge and phrase=="PLACE LIVE ORDERS"
+                if st.button(f"Submit {trade_mode.upper()} NO limit orders",disabled=not enabled,key="submit_kalshi_orders"):
+                    # Re-verify all candidate markets and reject stale/unavailable quotes.
+                    try:
+                        fresh,_=verify_candidates(proposal,max_quotes=len(proposal))
+                        fresh=fresh[fresh["verification"]=="MATCHED — QUOTED"]
+                        results=[]
+                        total_limit_cents=0.
+                        for _,pick in proposal.iterrows():
+                            matches=fresh[fresh["kalshi_ticker"]==pick["kalshi_ticker"]]
+                            if len(matches)!=1:
+                                results.append({"ticker":pick["kalshi_ticker"],"status":"SKIPPED: market unavailable"})
+                                continue
+                            current_price=float(matches.iloc[0]["kalshi_no_ask_cents"])
+                            limit=float(pick["kalshi_no_ask_cents"])
+                            if current_price>limit:
+                                results.append({"ticker":pick["kalshi_ticker"],"status":"SKIPPED: price increased"})
+                                continue
+                            count=int(pick["contracts"])
+                            total_limit_cents+=count*limit
+                            if total_limit_cents>float(order_budget)*100+0.001:
+                                results.append({"ticker":pick["kalshi_ticker"],"status":"SKIPPED: budget cap"})
+                                continue
+                            try:
+                                response=trader.buy_no_ioc(str(pick["kalshi_ticker"]),count,limit)
+                                order=response.get("order",response)
+                                results.append({"ticker":pick["kalshi_ticker"],
+                                    "status":"SUBMITTED — inspect fill status",
+                                    "order_id":order.get("order_id",""),
+                                    "fill_count":order.get("fill_count",""),
+                                    "remaining_count":order.get("remaining_count","")})
+                            except Exception as exc:
+                                results.append({"ticker":pick["kalshi_ticker"],"status":f"ERROR: {exc}"})
+                                # Stop on unknown execution outcome to avoid duplicates.
+                                break
+                        st.session_state["kalshi_execution_results"]=pd.DataFrame(results)
+                    except Exception as exc:
+                        st.error(f"Re-verification failed; no orders submitted in this attempt: {exc}")
+                if "kalshi_execution_results" in st.session_state:
+                    st.dataframe(st.session_state["kalshi_execution_results"],hide_index=True,use_container_width=True)
             with st.expander("Verification diagnostics / excluded contracts"):
                 st.dataframe(verified["verification"].value_counts().rename_axis("Reason").reset_index(name="Count"),
                     hide_index=True,use_container_width=True)
