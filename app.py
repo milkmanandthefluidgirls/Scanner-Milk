@@ -396,8 +396,7 @@ with no_picks_slot:
                 proposal=pd.DataFrame()
             # Keep manual removals across Streamlit reruns, but reset when the
             # underlying verified quote snapshot or model filters change.
-            removal_scope=(st.session_state.get("verified_no_checked_at"),current_key,
-                min_order_prob,max_order_price,min_order_edge,float(order_budget),int(contracts_each))
+            removal_scope=(st.session_state.get("verified_no_checked_at"),current_key)
             if st.session_state.get("no_removal_scope")!=removal_scope:
                 st.session_state["no_removal_scope"]=removal_scope
                 st.session_state["no_removed_tickers"]=[]
@@ -437,7 +436,17 @@ with no_picks_slot:
                             st.session_state.pop("paper_no_orders",None)
                             st.session_state.pop("kalshi_execution_results",None)
                             st.rerun()
+            selected_cost=float(proposal["max_cost_dollars"].sum()) if not proposal.empty else 0.0
             st.markdown(f"##### Orders selected within budget ({len(proposal)})")
+            st.caption(f"Budget: ${float(order_budget):.2f} · Contracts per pick: {int(contracts_each)} · Selected cost: ${selected_cost:.2f} · Remaining: ${max(0.0,float(order_budget)-selected_cost):.2f}")
+            order_signature=(float(order_budget),int(contracts_each),tuple(
+                (str(p["kalshi_ticker"]),int(p["contracts"]),float(p["kalshi_no_ask_cents"]))
+                for _,p in proposal.iterrows()))
+            if st.session_state.get("no_order_signature")!=order_signature:
+                st.session_state["no_order_signature"]=order_signature
+                st.session_state.pop("kalshi_trade_ack",None)
+                st.session_state.pop("kalshi_live_phrase",None)
+                st.session_state.pop("paper_approval",None)
             if proposal.empty:
                 st.info("No picks are currently selected for ordering within the spending limit.")
             else:
