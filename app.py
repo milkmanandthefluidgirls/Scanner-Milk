@@ -377,7 +377,13 @@ with no_picks_slot:
                 (eligible["estimated_edge_pp"]>=min_order_edge)].copy()
             eligible=eligible.sort_values(["estimated_edge_pp","model_no_pct"],
                 ascending=False)
-            st.caption(f"Verified available: {len(available)} · Meet probability, price and edge rules: {len(eligible)}")
+            qualifying_rows=len(eligible)
+            unique_eligible=eligible.drop_duplicates(subset=["kalshi_ticker"],keep="first").copy()
+            duplicates=qualifying_rows-len(unique_eligible)
+            st.caption(f"Verified model rows: {len(available)} · Qualifying rows: {qualifying_rows} · **Distinct Kalshi contracts: {len(unique_eligible)}**")
+            if duplicates:
+                st.warning(f"{duplicates} qualifying model rows refer to Kalshi tickers already counted. Each ticker can only be submitted once in this order proposal. Increasing the budget cannot create additional distinct markets.")
+            eligible=unique_eligible
             if eligible.empty and not available.empty:
                 st.warning("No verified picks satisfy all three limits. The controls above are filters, not guarantees. Adjust them or verify new quotes.")
                 with st.expander("See why picks were excluded"):
@@ -427,7 +433,7 @@ with no_picks_slot:
                 for _,pick in visible_eligible.iterrows():
                     ticker=str(pick["kalshi_ticker"])
                     in_order=ticker in proposed_tickers
-                    label="IN ORDER" if in_order else "NOT IN ORDER (budget or same player)"
+                    label="IN ORDER" if in_order else "NOT IN ORDER (budget or quantity limit)"
                     with st.container(border=True):
                         st.write(f"**{pick['player']}** · {pick['prop']} {pick['threshold']}+ · NO")
                         st.caption(f"{pick['kalshi_no_ask_cents']:.1f}¢ · {pick['model_no_pct']:.1f}% model · {pick['estimated_edge_pp']:.1f} pp gross edge · {label}")
@@ -439,6 +445,8 @@ with no_picks_slot:
             selected_cost=float(proposal["max_cost_dollars"].sum()) if not proposal.empty else 0.0
             st.markdown(f"##### Orders selected within budget ({len(proposal)})")
             st.caption(f"Budget: ${float(order_budget):.2f} · Contracts per pick: {int(contracts_each)} · Selected cost: ${selected_cost:.2f} · Remaining: ${max(0.0,float(order_budget)-selected_cost):.2f}")
+            if len(proposal)==len(eligible) and len(proposal)>0:
+                st.info("All distinct qualifying contracts are already selected. Raising the budget alone will not increase the order amount while Contracts per pick remains unchanged.")
             order_signature=(float(order_budget),int(contracts_each),tuple(
                 (str(p["kalshi_ticker"]),int(p["contracts"]),float(p["kalshi_no_ask_cents"]))
                 for _,p in proposal.iterrows()))
