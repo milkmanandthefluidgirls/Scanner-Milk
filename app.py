@@ -164,8 +164,6 @@ except Exception as e:
 # Render NO model picks at the top once their data is calculated.
 no_picks_slot=st.container()
 
-st.subheader("Season data")
-st.caption("Current season ONLY. Saved game logs are updated by GitHub Actions and persist across dashboard restarts.")
 logs=None
 saved_path=Path("data/nba_2026_27_regular_season_3pt.csv")
 manifest_path=Path("data/nba_2026_27_manifest.json")
@@ -180,138 +178,23 @@ if saved_path.exists():
         saved["GAME_DATE"]=saved["GAME_DATE"].dt.strftime("%Y-%m-%d")
         if not saved.empty:
             logs=saved
-            st.success(f"Saved current-season data: {len(saved):,} player-game records across {saved.GAME_ID.nunique() if 'GAME_ID' in saved else '?'} games.")
+
         if manifest_path.exists():
             manifest=json.loads(manifest_path.read_text())
-            st.caption(f"Last collection: {manifest.get('last_checked','unknown')} · Latest stored date: {saved.GAME_DATE.max() if not saved.empty else 'none'}")
+
             if not manifest.get("complete",False):
-                st.warning("Historical collection was incomplete. GitHub Actions will retry missing games; forecasts may be biased.")
-                with st.expander("Collection diagnostics"):
-                    st.json({k:v for k,v in manifest.items() if k!="completed_game_ids"})
+
     except Exception as exc:
-        st.error(f"Stored stats could not be loaded: {exc}")
+        st.session_state["saved_stats_error"]=str(exc)
 if logs is None:
-    st.info("No saved current-season dataset yet. In GitHub, open Actions → Update current-season NBA three-point stats → Run workflow. Wait for the first backfill to finish and Streamlit to redeploy.")
-with st.expander("Optional manual ESPN fallback (current season only)"):
-    days=st.select_slider("Recent days",options=[7,14,21,28],value=14,key="espn_days")
-    if st.button("Load recent ESPN logs",key="load_espn"):
-        st.session_state["espn_requested"]=True
-    if st.session_state.get("espn_requested"):
-        try:
-            with st.spinner("Collecting recent ESPN games..."):
-                recent,diagnostics=get_espn_logs(days,dt.datetime.now(dt.timezone(dt.timedelta(hours=-5))).date().isoformat())
-            recent["GAME_DATE"]=pd.to_datetime(recent["GAME_DATE"],errors="coerce")
-            recent=recent[recent["GAME_DATE"].between(pd.Timestamp("2026-10-01"),pd.Timestamp("2027-04-30"))]
-            recent["GAME_DATE"]=recent["GAME_DATE"].dt.strftime("%Y-%m-%d")
-            if logs is None and not recent.empty:
-                logs=recent
-                st.warning("Using recent-only fallback, not complete historical season data.")
-            st.dataframe(recent.head(80),hide_index=True,use_container_width=True)
-            st.download_button("Download recent logs",recent.to_csv(index=False),"espn_recent_3pt.csv")
-            if not diagnostics["complete"]:
-                st.warning("Recent ESPN fetch incomplete.")
-        except Exception as exc:
-            st.error(f"ESPN fallback unavailable: {exc}")
+
 if logs is None or logs.empty:
-    st.info("Player forecasts need current-season game logs. Run the GitHub Actions historical collector or use the recent ESPN fallback.")
-    show_targeted_markets()
-    st.subheader("Kalshi public market catalog")
-    if st.button("Fetch Kalshi markets"):
-        try: st.session_state["markets"]=get_markets()
-        except Exception as e: st.error(f"Kalshi API: {e}")
-    markets=st.session_state.get("markets",pd.DataFrame())
-    if not markets.empty:
-        candidates=nba_three_point_candidates(markets)
-        st.metric("Markets sampled",len(markets))
-        st.metric("Possible NBA 3PT contracts",len(candidates))
-        st.caption("This is a capped sample of open markets, not an exhaustive NBA scan. Text matching can miss contracts or include false positives.")
-        columns=[x for x in ("ticker","title","subtitle","status","yes_ask_dollars","no_ask_dollars") if x in candidates.columns]
-        if candidates.empty:
-            st.info("No NBA 3PT contracts identified in the sampled pages. This does not mean Kalshi has none.")
-        else:
-            st.dataframe(candidates[columns].head(500),hide_index=True,use_container_width=True)
-            st.download_button("Download filtered candidates",candidates.to_csv(index=False),"nba_3pt_candidates.csv")
+    st.error("Current-season game logs are unavailable. Open Research & data diagnostics below.")
     st.stop()
-st.subheader("Data health")
 manifest_data=json.loads(manifest_path.read_text()) if manifest_path.exists() else None
 logs,quality=validate_logs(logs,manifest_data)
-q1,q2,q3=st.columns(3)
-q1.metric("Validated player-game rows",quality.get("rows",0))
-q2.metric("Unique games",quality.get("games",0))
-q3.metric("Invalid / duplicate rows",quality.get("invalid_rows",0)+quality.get("duplicate_rows",0))
-if quality.get("errors"):
-    st.error("Data validation issues detected. Forecasts are withheld until the source data is corrected.")
-    for issue in quality["errors"]: st.write("• "+issue)
-if quality.get("warnings"):
-    st.warning("Data completeness warnings. Treat all model outputs as preliminary.")
-    for issue in quality["warnings"]: st.write("• "+issue)
-with st.expander("Data validation details"):
-    st.json(quality)
 if quality.get("errors"):
     st.stop()
-st.subheader("Historical NO hit rates — all player props")
-st.caption("Actual regular-season box scores, not model forecasts. NO hit rate means the player finished BELOW the selected threshold.")
-history_prop_path=Path("data/nba_2026_27_player_props.csv")
-history_prop_logs=None
-if history_prop_path.exists():
-    try:
-        history_prop_logs=pd.read_csv(history_prop_path,dtype={"PLAYER_ID":str,"GAME_ID":str})
-        needed={"PLAYER_ID","PLAYER_NAME","TEAM_ABBREVIATION","GAME_DATE","PTS","REB","AST","STL","BLK","FG3M"}
-        if not needed.issubset(history_prop_logs.columns):
-            raise ValueError("Saved prop logs lack required columns")
-    except Exception as exc:
-        st.warning(f"Additional player-prop history unavailable: {exc}")
-        history_prop_logs=None
-stat_labels={"Three-pointers":"FG3M","Points":"PTS","Rebounds":"REB",
-             "Assists":"AST","Steals":"STL","Blocks":"BLK"}
-stat_thresholds={"FG3M":[1,2,3,4,5,6],"PTS":[10,15,20,25,30,35],
-                 "REB":[4,6,8,10,12,14],"AST":[2,4,6,8,10,12],
-                 "STL":[1,2,3,4],"BLK":[1,2,3,4]}
-available_stats=["Three-pointers"]+([k for k in stat_labels if k!="Three-pointers"] if history_prop_logs is not None else [])
-if history_prop_logs is None:
-    st.info("Points, rebounds, assists, steals and blocks appear after the player-prop history backfill completes.")
-hcol1,hcol2,hcol3=st.columns(3)
-with hcol1:
-    history_stat=st.selectbox("Historical stat",available_stats,key="historical_no_stat")
-history_key=stat_labels[history_stat]
-with hcol2:
-    history_threshold=st.selectbox("NO on threshold",stat_thresholds[history_key],
-                                  index=min(1,len(stat_thresholds[history_key])-1),
-                                  format_func=lambda v:f"NO {v}+",key="historical_no_threshold")
-with hcol3:
-    history_team_scope=st.checkbox("Tonight's teams only",value=True,key="history_tonight_only")
-history_source=history_prop_logs if history_prop_logs is not None else logs
-history_rows=[]
-if history_key in history_source.columns:
-    source=history_source.copy()
-    source["GAME_DATE"]=pd.to_datetime(source["GAME_DATE"],errors="coerce")
-    source=source[source["GAME_DATE"].notna()]
-    source=source[source["GAME_DATE"].dt.date<dt.datetime.now(
-        __import__("zoneinfo").ZoneInfo("America/New_York")).date()]
-    for player_id,g in source.groupby("PLAYER_ID"):
-        g=g.sort_values("GAME_DATE")
-        values=pd.to_numeric(g[history_key],errors="coerce").dropna()
-        if len(values)<min_games:continue
-        latest=g.iloc[-1]
-        team=str(latest["TEAM_ABBREVIATION"])
-        if history_team_scope and not schedule.empty and team not in (set(schedule["away"])|set(schedule["home"])):
-            continue
-        last5=values.tail(5)
-        last10=values.tail(10)
-        history_rows.append({"Player":str(latest["PLAYER_NAME"]),"Team":team,
-            "Games":len(values),"NO threshold":f"{history_threshold}+",
-            "Season NO %":round(float((values<history_threshold).mean())*100,1),
-            "Last 5 NO %":round(float((last5<history_threshold).mean())*100,1),
-            "Last 10 NO %":round(float((last10<history_threshold).mean())*100,1),
-            "Season avg":round(float(values.mean()),2)})
-history_table=pd.DataFrame(history_rows)
-if history_table.empty:
-    st.info("No player history matches the selected stat, threshold and minimum games.")
-else:
-    history_table=history_table.sort_values(["Season NO %","Games"],ascending=[False,False])
-    st.dataframe(history_table,hide_index=True,use_container_width=True)
-    st.download_button("Download historical NO hit rates",history_table.to_csv(index=False),
-        "milkball_historical_no_hit_rates.csv",key="download_historical_no")
 logs=logs.copy()
 logs["GAME_DATE"]=pd.to_datetime(logs["GAME_DATE"],errors="coerce")
 logs=logs[logs["GAME_DATE"].dt.date < dt.datetime.now(dt.timezone(dt.timedelta(hours=-5))).date()]
@@ -326,7 +209,7 @@ if forecasts.empty:
 st.subheader("NO model results tracker")
 st.caption("NO predictions only, beginning yesterday. Older YES-model results are excluded, not deleted.")
 today=dt.datetime.now(__import__("zoneinfo").ZoneInfo("America/New_York")).date()
-no_tracking_start=today-dt.timedelta(days=1)
+no_tracking_start=dt.date(2026,11,17)
 tracked=load_predictions()
 tracked=tracked[(tracked["side"].astype(str).str.upper()=="NO") &
                 (tracked["prediction_date"].astype(str)>=no_tracking_start.isoformat())].copy()
@@ -613,3 +496,117 @@ with no_picks_slot:
                     shown[field]=(shown[field]*100).round(1)
                 shown["Brier"]=shown["Brier"].round(4)
                 st.dataframe(shown,hide_index=True,use_container_width=True)
+
+# Secondary research is intentionally collapsed beneath the three primary workflows.
+with st.expander("Research & data diagnostics — season data, health, historical NO rates",expanded=False):
+    st.subheader("Season data")
+    st.caption("Current season ONLY. Saved game logs are updated by GitHub Actions.")
+    if saved_path.exists() and logs is not None:
+        st.success(f"Saved current-season data: {len(logs):,} validated player-game records.")
+    if "saved_stats_error" in st.session_state:
+        st.error(st.session_state["saved_stats_error"])
+    if manifest_path.exists():
+        st.caption(f"Last collection: {manifest.get('last_checked','unknown')}")
+        if not manifest.get("complete",False):
+            st.warning("Historical collection incomplete; forecasts may be biased.")
+            with st.expander("Collection diagnostics"):
+                st.json({k:v for k,v in manifest.items() if k!="completed_game_ids"})
+    with st.expander("Optional manual ESPN fallback (current season only)"):
+        days=st.select_slider("Recent days",options=[7,14,21,28],value=14,key="espn_days")
+        if st.button("Load recent ESPN logs",key="load_espn"):
+            st.session_state["espn_requested"]=True
+        if st.session_state.get("espn_requested"):
+            try:
+                with st.spinner("Collecting recent ESPN games..."):
+                    recent,diagnostics=get_espn_logs(days,dt.datetime.now(dt.timezone(dt.timedelta(hours=-5))).date().isoformat())
+                recent["GAME_DATE"]=pd.to_datetime(recent["GAME_DATE"],errors="coerce")
+                recent=recent[recent["GAME_DATE"].between(pd.Timestamp("2026-10-01"),pd.Timestamp("2027-04-30"))]
+                recent["GAME_DATE"]=recent["GAME_DATE"].dt.strftime("%Y-%m-%d")
+                if logs is None and not recent.empty:
+                    logs=recent
+                    st.warning("Using recent-only fallback, not complete historical season data.")
+                st.dataframe(recent.head(80),hide_index=True,use_container_width=True)
+                st.download_button("Download recent logs",recent.to_csv(index=False),"espn_recent_3pt.csv")
+                if not diagnostics["complete"]:
+                    st.warning("Recent ESPN fetch incomplete.")
+            except Exception as exc:
+                st.error(f"ESPN fallback unavailable: {exc}")
+
+    st.subheader("Data health")
+    q1,q2,q3=st.columns(3)
+    q1.metric("Validated player-game rows",quality.get("rows",0))
+    q2.metric("Unique games",quality.get("games",0))
+    q3.metric("Invalid / duplicate rows",quality.get("invalid_rows",0)+quality.get("duplicate_rows",0))
+    if quality.get("errors"):
+        st.error("Data validation issues detected. Forecasts are withheld until the source data is corrected.")
+        for issue in quality["errors"]: st.write("• "+issue)
+    if quality.get("warnings"):
+        st.warning("Data completeness warnings. Treat all model outputs as preliminary.")
+        for issue in quality["warnings"]: st.write("• "+issue)
+    with st.expander("Data validation details"):
+        st.json(quality)
+
+    st.subheader("Historical NO hit rates — all player props")
+    st.caption("Actual regular-season box scores, not model forecasts. NO hit rate means the player finished BELOW the selected threshold.")
+    history_prop_path=Path("data/nba_2026_27_player_props.csv")
+    history_prop_logs=None
+    if history_prop_path.exists():
+        try:
+            history_prop_logs=pd.read_csv(history_prop_path,dtype={"PLAYER_ID":str,"GAME_ID":str})
+            needed={"PLAYER_ID","PLAYER_NAME","TEAM_ABBREVIATION","GAME_DATE","PTS","REB","AST","STL","BLK","FG3M"}
+            if not needed.issubset(history_prop_logs.columns):
+                raise ValueError("Saved prop logs lack required columns")
+        except Exception as exc:
+            st.warning(f"Additional player-prop history unavailable: {exc}")
+            history_prop_logs=None
+    stat_labels={"Three-pointers":"FG3M","Points":"PTS","Rebounds":"REB",
+                 "Assists":"AST","Steals":"STL","Blocks":"BLK"}
+    stat_thresholds={"FG3M":[1,2,3,4,5,6],"PTS":[10,15,20,25,30,35],
+                     "REB":[4,6,8,10,12,14],"AST":[2,4,6,8,10,12],
+                     "STL":[1,2,3,4],"BLK":[1,2,3,4]}
+    available_stats=["Three-pointers"]+([k for k in stat_labels if k!="Three-pointers"] if history_prop_logs is not None else [])
+    if history_prop_logs is None:
+        st.info("Points, rebounds, assists, steals and blocks appear after the player-prop history backfill completes.")
+    hcol1,hcol2,hcol3=st.columns(3)
+    with hcol1:
+        history_stat=st.selectbox("Historical stat",available_stats,key="historical_no_stat")
+    history_key=stat_labels[history_stat]
+    with hcol2:
+        history_threshold=st.selectbox("NO on threshold",stat_thresholds[history_key],
+                                      index=min(1,len(stat_thresholds[history_key])-1),
+                                      format_func=lambda v:f"NO {v}+",key="historical_no_threshold")
+    with hcol3:
+        history_team_scope=st.checkbox("Tonight's teams only",value=True,key="history_tonight_only")
+    history_source=history_prop_logs if history_prop_logs is not None else logs
+    history_rows=[]
+    if history_key in history_source.columns:
+        source=history_source.copy()
+        source["GAME_DATE"]=pd.to_datetime(source["GAME_DATE"],errors="coerce")
+        source=source[source["GAME_DATE"].notna()]
+        source=source[source["GAME_DATE"].dt.date<dt.datetime.now(
+            __import__("zoneinfo").ZoneInfo("America/New_York")).date()]
+        for player_id,g in source.groupby("PLAYER_ID"):
+            g=g.sort_values("GAME_DATE")
+            values=pd.to_numeric(g[history_key],errors="coerce").dropna()
+            if len(values)<min_games:continue
+            latest=g.iloc[-1]
+            team=str(latest["TEAM_ABBREVIATION"])
+            if history_team_scope and not schedule.empty and team not in (set(schedule["away"])|set(schedule["home"])):
+                continue
+            last5=values.tail(5)
+            last10=values.tail(10)
+            history_rows.append({"Player":str(latest["PLAYER_NAME"]),"Team":team,
+                "Games":len(values),"NO threshold":f"{history_threshold}+",
+                "Season NO %":round(float((values<history_threshold).mean())*100,1),
+                "Last 5 NO %":round(float((last5<history_threshold).mean())*100,1),
+                "Last 10 NO %":round(float((last10<history_threshold).mean())*100,1),
+                "Season avg":round(float(values.mean()),2)})
+    history_table=pd.DataFrame(history_rows)
+    if history_table.empty:
+        st.info("No player history matches the selected stat, threshold and minimum games.")
+    else:
+        history_table=history_table.sort_values(["Season NO %","Games"],ascending=[False,False])
+        st.dataframe(history_table,hide_index=True,use_container_width=True)
+        st.download_button("Download historical NO hit rates",history_table.to_csv(index=False),
+            "milkball_historical_no_hit_rates.csv",key="download_historical_no")
+
