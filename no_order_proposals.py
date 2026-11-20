@@ -21,7 +21,7 @@ def propose_no_orders(verified,min_probability=0.85,min_gross_edge_pp=8.0,
         & data["kalshi_no_ask_cents"].le(float(max_price_cents))
     ].copy()
     data=data.sort_values(["estimated_edge_pp","model_no_pct"],ascending=False)
-    data=data.drop_duplicates(subset=["player"],keep="first")
+    # Each distinct ticker can be selected; multiple markets for one player\n    # are correlated and must be reviewed before any real-money submission.\n    data=data.drop_duplicates(subset=["kalshi_ticker"],keep="first")
     remaining=round(float(budget_dollars)*100)
     count=int(contracts_each)
     if count<1:raise ValueError("Contracts per pick must be positive")
