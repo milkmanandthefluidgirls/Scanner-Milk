@@ -209,6 +209,35 @@ if forecasts.empty:
     st.warning("No qualifying player logs.")
     st.stop()
 # Curated model estimates and prospective results directly beneath matchups.
+st.subheader("Milkball order profitability")
+st.caption("Separate from model accuracy. Tracks actual Milkball-tagged Kalshi orders, fills, and verified settlements. Never estimates unverified profits.")
+if st.button("Refresh Milkball trades & P/L",key="refresh_milkball_trades"):
+    try:
+        from kalshi_trader import KalshiTrader as _TradeClient
+        from trade_tracker import report as _trade_report
+        _keys=st.secrets["kalshi_production"]
+        _client=_TradeClient(_keys["key_id"],_keys["private_key_pem"])
+        _trades,_totals=_trade_report(_client)
+        st.session_state["milkball_trade_report"]=_trades
+        st.session_state["milkball_trade_totals"]=_totals
+    except Exception as exc:
+        st.error(f"Could not refresh trade history: {exc}")
+if "milkball_trade_report" in st.session_state:
+    _trades=st.session_state["milkball_trade_report"]
+    _totals=st.session_state["milkball_trade_totals"]
+    _c1,_c2,_c3=st.columns(3)
+    _c1.metric("App orders",_totals["orders"])
+    _c2.metric("Settled trades",_totals.get("settled",0))
+    _c3.metric("Verified realized net P/L",f"${_totals.get('realized',0):,.2f}")
+    st.caption(f"Unsettled/unverified filled orders: {_totals.get('pending',0)}. Cost and net profit are only shown when API fill details support them; open positions are not counted as realized profit.")
+    if _trades.empty:
+        st.info("No tagged Milkball orders found in the retrieved Kalshi history. Older app orders submitted before tagging cannot be reliably distinguished from manual trades.")
+    else:
+        st.dataframe(_trades,hide_index=True,use_container_width=True)
+        st.download_button("Download Milkball trade history",_trades.to_csv(index=False),"milkball_trade_history.csv","text/csv",key="download_milkball_trades")
+else:
+    st.caption("Press Refresh to load the account's app-attributed trades. This does not submit any orders.")
+
 st.subheader("NO model results tracker")
 st.caption("NO predictions only, beginning yesterday. Older YES-model results are excluded, not deleted.")
 today=dt.datetime.now(__import__("zoneinfo").ZoneInfo("America/New_York")).date()
