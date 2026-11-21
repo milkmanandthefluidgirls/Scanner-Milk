@@ -48,7 +48,7 @@ def report(trader):
         qty=sum(_number(f.get("count_fp",f.get("count",0))) for f in trades)
         cost=0.0
         fees=0.0
-        complete=True
+        complete=bool(trades)
         for f in trades:
             price=f.get("yes_price_dollars",f.get("price"))
             if price is None:
@@ -57,7 +57,7 @@ def report(trader):
             p=_number(price)
             if p>1:p/=100
             cost+=_number(f.get("count_fp",f.get("count",0)))*(1-p)
-            fee=f.get("fee_cost_dollars")
+            fee=f.get("fee_cost_dollars",f.get("fee_cost"))
             if fee is None:
                 complete=False
             else:
