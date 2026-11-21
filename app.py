@@ -446,7 +446,6 @@ with no_picks_slot:
                         st.caption(f"{pick['kalshi_no_ask_cents']:.1f}¢ · {pick['model_no_pct']:.1f}% model · {pick['estimated_edge_pp']:.1f} pp gross edge · {label}")
                         if st.button("✕ Remove",key=f"remove_no_{ticker}",use_container_width=True):
                             st.session_state["no_removed_tickers"].append(ticker)
-                            st.session_state.pop("paper_no_orders",None)
                             st.session_state.pop("kalshi_execution_results",None)
                             st.rerun()
             # Verify the proposal respects the current budget and actually
@@ -473,17 +472,12 @@ with no_picks_slot:
                 st.session_state["no_order_signature"]=order_signature
                 st.session_state.pop("kalshi_trade_ack",None)
                 st.session_state.pop("kalshi_live_phrase",None)
-                st.session_state.pop("paper_approval",None)
             if proposal.empty:
                 st.info("No picks are currently selected for ordering within the spending limit.")
             else:
                 st.dataframe(proposal,hide_index=True,use_container_width=True)
                 st.metric("Maximum proposed purchase cost",f"${proposal['max_cost_dollars'].sum():.2f}")
                 st.caption("Only these orders can be submitted. Larger budgets automatically increase quantities and financial exposure; prices are snapshots and fees are excluded.")
-                approval=st.checkbox("I have reviewed the proposed picks and understand this is a simulation.",key="paper_approval")
-                if st.button("Approve paper-trade picks",disabled=not approval,key="approve_paper"):
-                    st.session_state["paper_no_orders"]=proposal.copy()
-                    st.success("Paper picks recorded in this browser session. No Kalshi orders were placed.")
             st.markdown("##### Kalshi account connection & order execution")
             st.caption("Production Kalshi account only. Credentials stay in Streamlit Secrets; never paste a private key into the app or GitHub.")
             trade_mode="production"
