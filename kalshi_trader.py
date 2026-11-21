@@ -72,7 +72,7 @@ class KalshiTrader:
         from urllib.parse import urlencode
         params={"limit":min(200,max(1,int(limit)))}
         if cursor:params["cursor"]=cursor
-        return self.request("GET","/portfolio/events/orders?"+urlencode(params))
+        return self.request("GET","/portfolio/orders?"+urlencode(params))
 
     def list_fills(self,limit=200,cursor=None):
         from urllib.parse import urlencode
