@@ -62,6 +62,22 @@ class KalshiTrader:
             return self.balance()
         return self.request("GET",f"/portfolio/balance?exchange_index={int(exchange_index)}")
 
+    def transfer_between_prediction_shards(self,source_shard,destination_shard,amount_cents,client_transfer_id):
+        """Explicitly approved Predictions-to-Predictions transfer, amount in centicents."""
+        source=int(source_shard)
+        destination=int(destination_shard)
+        cents=int(amount_cents)
+        if source<0 or destination<0 or source==destination:
+            raise ValueError("Select different nonnegative exchange shards")
+        if cents<1 or cents>100000:
+            raise ValueError("Transfer amount must be between $0.01 and $1,000")
+        return self.request("POST","/portfolio/intra_exchange_instance_transfer",{
+            "source":"event_contract","destination":"event_contract",
+            "source_exchange_shard":source,"destination_exchange_shard":destination,
+            "source_subaccount":0,"destination_subaccount":0,
+            "amount":cents*100,
+            "client_transfer_id":str(client_transfer_id)})
+    
     def buy_no_ioc(self,ticker,contracts,max_no_price_cents,client_order_id=None):
         """NO exposure = sell YES at a minimum of 1 - max NO cost."""
         if not ticker or not isinstance(ticker,str):raise ValueError("Missing ticker")
