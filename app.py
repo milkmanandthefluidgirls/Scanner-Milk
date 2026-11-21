@@ -485,9 +485,9 @@ with no_picks_slot:
                     st.session_state["paper_no_orders"]=proposal.copy()
                     st.success("Paper picks recorded in this browser session. No Kalshi orders were placed.")
             st.markdown("##### Kalshi account connection & order execution")
-            st.caption("Credentials must be added to Streamlit Secrets. Default is DEMO. Never paste a private key into the app or GitHub.")
-            trade_mode=st.selectbox("Trading environment",["demo","production"],key="trade_mode")
-            secrets_group="kalshi_demo" if trade_mode=="demo" else "kalshi_production"
+            st.caption("Production Kalshi account only. Credentials stay in Streamlit Secrets; never paste a private key into the app or GitHub.")
+            trade_mode="production"
+            secrets_group="kalshi_production"
             try:
                 credentials=st.secrets[secrets_group]
                 trader=KalshiTrader(credentials["key_id"],credentials["private_key_pem"],trade_mode)
@@ -504,10 +504,7 @@ with no_picks_slot:
             if not proposal.empty:
                 st.warning("Orders are immediate-or-cancel limits; fills may be partial. Prices must be refreshed immediately before approval. Fee estimates are NOT included.")
                 acknowledge=st.checkbox(f"I approve up to ${proposal['max_cost_dollars'].sum():.2f} in {trade_mode.upper()} NO orders for the exact listed contracts.",key="kalshi_trade_ack")
-                if trade_mode=="production":
-                    phrase=st.text_input("Type PLACE LIVE ORDERS to authorize real-money trading",key="kalshi_live_phrase")
-                else:
-                    phrase="PLACE LIVE ORDERS"
+                phrase=st.text_input("Type PLACE LIVE ORDERS to authorize real-money trading",key="kalshi_live_phrase")
                 enabled=trader is not None and acknowledge and phrase=="PLACE LIVE ORDERS" and not st.session_state.get("no_allocator_error",False)
                 if st.button(f"Submit {trade_mode.upper()} NO limit orders",disabled=not enabled,key="submit_kalshi_orders"):
                     # Re-verify all candidate markets and reject stale/unavailable quotes.
