@@ -544,10 +544,10 @@ with no_picks_slot:
                                         result=trader.transfer_between_prediction_shards(source,3,requested_cents,transfer_id)
                                         st.success(f"Transfer accepted; processing may take time. Transfer ID: {result.get('transfer_id','not returned')}")
                                         st.session_state.pop("exchange_balance_rows",None)
-                                        st.session_state["fund_confirm"]=False
+                                        st.info("Refresh the exchange balances to confirm the funds arrived before placing orders.")
                                 except Exception as exc:
                                     st.error(f"Transfer status uncertain or rejected: {exc}. Check transfer history before trying again.")
-                        if not proposal.empty:
+            if not proposal.empty:
                 st.warning("Orders are immediate-or-cancel limits; fills may be partial. Prices must be refreshed immediately before approval. Fee estimates are NOT included.")
                 acknowledge=st.checkbox(f"I approve up to ${proposal['max_cost_dollars'].sum():.2f} in {trade_mode.upper()} NO orders for the exact listed contracts.",key="kalshi_trade_ack")
                 phrase=st.text_input("Type PLACE LIVE ORDERS to authorize real-money trading",key="kalshi_live_phrase")
