@@ -8,11 +8,15 @@ import time
 import uuid
 from decimal import Decimal
 import requests
+import threading
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, padding, rsa
 
 HOSTS={"production":"https://external-api.kalshi.com"}
 ROOT="/trade-api/v2"
+_REQUEST_LOCK=threading.Lock()
+_LAST_REQUEST=[0.0]
+_MIN_INTERVAL_SECONDS=0.40
 
 class KalshiTrader:
     def __init__(self,key_id,private_key_pem,environment="production"):
@@ -39,8 +43,22 @@ class KalshiTrader:
             "KALSHI-ACCESS-SIGNATURE":base64.b64encode(signature).decode()}
 
     def request(self,method,path,body=None):
-        response=requests.request(method,HOSTS[self.environment]+ROOT+path,
-            headers=self._headers(method,path),json=body,timeout=20)
+        # Pace authenticated calls globally within this Streamlit process.
+        # Never automatically retry writes: a timed-out order may have been accepted.
+        attempts=3 if method.upper()=="GET" else 1
+        for attempt in range(attempts):
+            with _REQUEST_LOCK:
+                wait=max(0.0,_MIN_INTERVAL_SECONDS-(time.monotonic()-_LAST_REQUEST[0]))
+                if wait:time.sleep(wait)
+                _LAST_REQUEST[0]=time.monotonic()
+                response=requests.request(method,HOSTS[self.environment]+ROOT+path,
+                    headers=self._headers(method,path),json=body,timeout=20)
+            if response.status_code!=429 or attempt==attempts-1:
+                break
+            retry_after=response.headers.get("Retry-After","")
+            try:delay=min(10.0,max(1.0,float(retry_after)))
+            except (ValueError,TypeError):delay=min(10.0,2.0**attempt)
+            time.sleep(delay)
         if not response.ok:
             try:
                 detail=response.json()
