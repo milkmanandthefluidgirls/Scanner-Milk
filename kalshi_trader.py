@@ -68,6 +68,18 @@ class KalshiTrader:
             raise ValueError(f"Kalshi HTTP {response.status_code}: {detail}")
         return response.json()
 
+    def list_orders(self,limit=200,cursor=None):
+        from urllib.parse import urlencode
+        params={"limit":min(200,max(1,int(limit)))}
+        if cursor:params["cursor"]=cursor
+        return self.request("GET","/portfolio/events/orders?"+urlencode(params))
+
+    def list_fills(self,limit=200,cursor=None):
+        from urllib.parse import urlencode
+        params={"limit":min(200,max(1,int(limit)))}
+        if cursor:params["cursor"]=cursor
+        return self.request("GET","/portfolio/fills?"+urlencode(params))
+
     def balance(self):
         return self.request("GET","/portfolio/balance")
 
@@ -105,7 +117,7 @@ class KalshiTrader:
         if price<=0 or price>=100:raise ValueError("Invalid NO limit price")
         yes_price=(Decimal("1")-price/Decimal("100"))
         if yes_price<=0 or yes_price>=1:raise ValueError("Invalid YES price")
-        body={"ticker":ticker,"client_order_id":client_order_id or str(uuid.uuid4()),
+        body={"ticker":ticker,"client_order_id":client_order_id or ("milkball-"+uuid.uuid4().hex),
               "side":"ask","count":f"{n:.2f}","price":f"{yes_price:.4f}",
               "time_in_force":"immediate_or_cancel",
               "self_trade_prevention_type":"taker_at_cross",
