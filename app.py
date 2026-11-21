@@ -507,7 +507,7 @@ with no_picks_slot:
                 phrase=st.text_input("Type PLACE LIVE ORDERS to authorize real-money trading",key="kalshi_live_phrase")
                 enabled=trader is not None and acknowledge and phrase=="PLACE LIVE ORDERS" and not st.session_state.get("no_allocator_error",False)
                 if st.button(f"Submit {trade_mode.upper()} NO limit orders",disabled=not enabled,key="submit_kalshi_orders"):
-                    # Re-verify all candidate markets and reject stale/unavailable quotes.
+                    # Re-verify quotes and validate the market exchange balance before submitting.
                     try:
                         fresh,_=verify_candidates(proposal,max_quotes=len(proposal))
                         fresh=fresh[fresh["verification"]=="MATCHED — QUOTED"]
@@ -529,6 +529,22 @@ with no_picks_slot:
                                 results.append({"ticker":pick["kalshi_ticker"],"status":"SKIPPED: budget cap"})
                                 continue
                             try:
+                                # A member-wide balance can include money on another exchange shard.
+                                # Require market-specific exchange information before live submission.
+                                market_payload=trader.market(str(pick["kalshi_ticker"]))
+                                market_info=market_payload.get("market",market_payload)
+                                exchange_index=market_info.get("exchange_index")
+                                if exchange_index is None:
+                                    results.append({"ticker":pick["kalshi_ticker"],
+                                        "status":"BLOCKED: Kalshi market did not identify an exchange shard; cannot validate available funds"})
+                                    break
+                                scoped_balance=trader.balance_for_exchange(exchange_index)
+                                available_cents=int(scoped_balance.get("balance",0))
+                                required_cents=int(__import__("math").ceil(count*limit))
+                                if available_cents<required_cents:
+                                    results.append({"ticker":pick["kalshi_ticker"],
+                                        "status":f"BLOCKED: exchange {exchange_index} available balance ${available_cents/100:.2f}, required ${required_cents/100:.2f} before fees"})
+                                    break
                                 response=trader.buy_no_ioc(str(pick["kalshi_ticker"]),count,limit)
                                 order=response.get("order",response)
                                 results.append({"ticker":pick["kalshi_ticker"],
