@@ -539,11 +539,20 @@ with no_picks_slot:
                                         "status":"BLOCKED: Kalshi market did not identify an exchange shard; cannot validate available funds"})
                                     break
                                 scoped_balance=trader.balance_for_exchange(exchange_index)
-                                available_cents=int(scoped_balance.get("balance",0))
+                                if "balance" not in scoped_balance:
+                                    results.append({"ticker":pick["kalshi_ticker"],
+                                        "status":f"BLOCKED: exchange {exchange_index} balance response missing expected balance field; no order sent"})
+                                    break
+                                available_cents=int(scoped_balance["balance"])
                                 required_cents=int(__import__("math").ceil(count*limit))
                                 if available_cents<required_cents:
+                                    overall_balance=trader.balance()
+                                    breakdown=overall_balance.get("balance_breakdown",[])
+                                    summary=", ".join(
+                                        f"exchange {entry.get('exchange_index','?')}: ${float(entry.get('balance',0)):.2f}"
+                                        for entry in breakdown if isinstance(entry,dict))
                                     results.append({"ticker":pick["kalshi_ticker"],
-                                        "status":f"BLOCKED: exchange {exchange_index} available balance ${available_cents/100:.2f}, required ${required_cents/100:.2f} before fees"})
+                                        "status":f"BLOCKED: exchange {exchange_index} has ${available_cents/100:.2f}, requires ${required_cents/100:.2f} before fees. Overall ${int(overall_balance.get('balance',0))/100:.2f}. Exchange breakdown: {summary or 'not supplied'}. No order sent."})
                                     break
                                 response=trader.buy_no_ioc(str(pick["kalshi_ticker"]),count,limit)
                                 order=response.get("order",response)
