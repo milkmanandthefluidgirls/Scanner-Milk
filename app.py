@@ -501,7 +501,53 @@ with no_picks_slot:
                     st.write("Available balance (cents):",balance.get("balance","Unavailable"))
                 except Exception as exc:
                     st.error(f"Account check failed: {exc}")
-            if not proposal.empty:
+            with st.expander("Predictions exchange balances & manual funding",expanded=False):
+                st.caption("Transfers stay inside Predictions, not Invest. No transfer happens without your confirmation. Kalshi processes transfers asynchronously.")
+                if trader is None:
+                    st.info("Connect production credentials to view balances.")
+                else:
+                    if st.button("Refresh exchange balances",key="refresh_exchange_balances"):
+                        try:
+                            snapshot=trader.balance()
+                            breakdown=snapshot.get("balance_breakdown",[])
+                            if isinstance(breakdown,list) and breakdown:
+                                st.session_state["exchange_balance_rows"]=breakdown
+                                st.session_state["exchange_balance_total"]=snapshot.get("balance")
+                            else:
+                                st.warning("Kalshi did not provide an exchange breakdown; transfers are disabled.")
+                                st.session_state.pop("exchange_balance_rows",None)
+                        except Exception as exc:
+                            st.error(f"Balance check failed: {exc}")
+                    rows=st.session_state.get("exchange_balance_rows",[])
+                    if rows:
+                        st.write("Exchange balances as returned by Kalshi:",pd.DataFrame(rows))
+                        st.caption("These balances are snapshots. Transfers must be verified against a fresh source balance.")
+                        indices=sorted({int(r["exchange_index"]) for r in rows if isinstance(r,dict) and "exchange_index" in r})
+                        source_options=[i for i in indices if i!=3]
+                        if not source_options:
+                            st.info("No source exchange was identified in the returned breakdown.")
+                        else:
+                            source=st.selectbox("Transfer from Predictions exchange",source_options,key="fund_source")
+                            st.write("Transfer to: Predictions exchange 3 (NBA)")
+                            amount=st.number_input("Transfer amount ($)",min_value=0.01,max_value=1000.0,value=5.0,step=1.0,key="fund_amount")
+                            confirm=st.checkbox(f"I authorize a one-time ${amount:.2f} internal Predictions transfer from exchange {source} to exchange 3.",key="fund_confirm")
+                            if st.button("Transfer funds to NBA exchange 3",disabled=not confirm,key="fund_submit"):
+                                try:
+                                    import uuid
+                                    fresh_source=trader.balance_for_exchange(source)
+                                    source_cents=int(fresh_source["balance"])
+                                    requested_cents=int(round(amount*100))
+                                    if source_cents<requested_cents:
+                                        st.error(f"Source exchange {source} has only ${source_cents/100:.2f} available.")
+                                    else:
+                                        transfer_id=str(uuid.uuid4())
+                                        result=trader.transfer_between_prediction_shards(source,3,requested_cents,transfer_id)
+                                        st.success(f"Transfer accepted; processing may take time. Transfer ID: {result.get('transfer_id','not returned')}")
+                                        st.session_state.pop("exchange_balance_rows",None)
+                                        st.session_state["fund_confirm"]=False
+                                except Exception as exc:
+                                    st.error(f"Transfer status uncertain or rejected: {exc}. Check transfer history before trying again.")
+                        if not proposal.empty:
                 st.warning("Orders are immediate-or-cancel limits; fills may be partial. Prices must be refreshed immediately before approval. Fee estimates are NOT included.")
                 acknowledge=st.checkbox(f"I approve up to ${proposal['max_cost_dollars'].sum():.2f} in {trade_mode.upper()} NO orders for the exact listed contracts.",key="kalshi_trade_ack")
                 phrase=st.text_input("Type PLACE LIVE ORDERS to authorize real-money trading",key="kalshi_live_phrase")
