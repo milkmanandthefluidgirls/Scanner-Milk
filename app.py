@@ -559,6 +559,7 @@ with no_picks_slot:
                         fresh=fresh[fresh["verification"]=="MATCHED — QUOTED"]
                         results=[]
                         total_limit_cents=0.
+                        exchange_balances={}
                         for _,pick in proposal.iterrows():
                             matches=fresh[fresh["kalshi_ticker"]==pick["kalshi_ticker"]]
                             if len(matches)!=1:
@@ -584,7 +585,11 @@ with no_picks_slot:
                                     results.append({"ticker":pick["kalshi_ticker"],
                                         "status":"BLOCKED: Kalshi market did not identify an exchange shard; cannot validate available funds"})
                                     break
-                                scoped_balance=trader.balance_for_exchange(exchange_index)
+                                # Fetch each exchange balance once per approved batch,
+                                # and reserve estimated cost locally after every submission.
+                                if exchange_index not in exchange_balances:
+                                    exchange_balances[exchange_index]=trader.balance_for_exchange(exchange_index)
+                                scoped_balance=exchange_balances[exchange_index]
                                 if "balance" not in scoped_balance:
                                     results.append({"ticker":pick["kalshi_ticker"],
                                         "status":f"BLOCKED: exchange {exchange_index} balance response missing expected balance field; no order sent"})
@@ -600,6 +605,8 @@ with no_picks_slot:
                                     results.append({"ticker":pick["kalshi_ticker"],
                                         "status":f"BLOCKED: exchange {exchange_index} has ${available_cents/100:.2f}, requires ${required_cents/100:.2f} before fees. Overall ${int(overall_balance.get('balance',0))/100:.2f}. Exchange breakdown: {summary or 'not supplied'}. No order sent."})
                                     break
+                                # Reserve budget conservatively even if the IOC only partially fills.
+                                exchange_balances[exchange_index]["balance"]=available_cents-required_cents
                                 response=trader.buy_no_ioc(str(pick["kalshi_ticker"]),count,limit)
                                 order=response.get("order",response)
                                 results.append({"ticker":pick["kalshi_ticker"],
