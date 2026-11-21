@@ -39,6 +39,7 @@ def report(trader):
         oid=str(f.get("order_id",""))
         if oid in ids:by_order.setdefault(oid,[]).append(f)
     rows=[]
+    market_cache={}
     for o in mine:
         oid=str(o.get("order_id",""))
         trades=by_order.get(oid,[])
@@ -61,6 +62,22 @@ def report(trader):
                 complete=False
             else:
                 fees+=_number(fee)
+        ticker=str(o.get("ticker",""))
+        settlement="Not verified"
+        realized=None
+        if qty>0 and complete:
+            if ticker not in market_cache:
+                try:
+                    payload=trader.market(ticker)
+                    market_cache[ticker]=payload.get("market",payload)
+                except Exception:
+                    market_cache[ticker]={}
+            market=market_cache[ticker]
+            result=str(market.get("result","")).lower()
+            status=str(market.get("status","")).lower()
+            if status in ("finalized","settled") and result in ("yes","no"):
+                settlement=result.upper()
+                realized=round((qty if result=="no" else 0)-cost-fees,4)
         rows.append({
             "Submitted":o.get("created_time",o.get("created_at","")),
             "Ticker":o.get("ticker",""),
@@ -69,10 +86,12 @@ def report(trader):
             "Filled contracts":qty,
             "Filled NO cost ($)":round(cost,4) if complete else None,
             "Reported fees ($)":round(fees,4) if complete else None,
-            "Realized P/L ($)":None,
-            "Settlement":"Not verified",
+            "Realized P/L ($)":realized,
+            "Settlement":settlement,
         })
     df=pd.DataFrame(rows)
     return df,{"orders":len(df),"filled":int((df["Filled contracts"]>0).sum()),
                "spent":df["Filled NO cost ($)"].sum(skipna=True),
-               "realized":None,"pending":int((df["Filled contracts"]>0).sum())}
+               "realized":df["Realized P/L ($)"].sum(skipna=True),
+               "settled":int(df["Realized P/L ($)"].notna().sum()),
+               "pending":int(((df["Filled contracts"]>0)&df["Realized P/L ($)"].isna()).sum())}
