@@ -7,7 +7,7 @@ from model import player_forecasts
 from validation import validate_logs
 
 PREDICTIONS=Path("data/model_predictions.csv")
-COLUMNS=["prediction_date","created_at_utc","player_id","player","team","threshold","side","probability","game_id","result","correct","settled_at_utc"]
+COLUMNS=["prediction_date","created_at_utc","player_id","player","team","prop","threshold","side","probability","game_id","result","correct","settled_at_utc"]
 
 def select_candidates(forecasts, min_games=5, minimum=.90):
     if forecasts is None or forecasts.empty: return pd.DataFrame()
@@ -28,6 +28,7 @@ def load_predictions(path=PREDICTIONS):
     df=pd.read_csv(path,dtype={"player_id":str,"game_id":str})
     for c in COLUMNS:
         if c not in df.columns:df[c]=pd.NA
+    df["prop"]=df["prop"].fillna("3PT made")
     return df[COLUMNS]
 
 def settle_predictions(predictions, logs):
@@ -46,7 +47,9 @@ def settle_predictions(predictions, logs):
         key=(str(r.player_id),str(r.prediction_date))
         if key not in lookup.index:continue
         actual=lookup.loc[key]
-        made=int(actual["FG3M"])
+        stat={"3PT made":"FG3M","PTS":"PTS","REB":"REB","AST":"AST","STL":"STL","BLK":"BLK"}.get(str(r.prop))
+        if not stat or stat not in actual.index or pd.isna(actual[stat]):continue
+        made=int(actual[stat])
         success=(made>=int(r.threshold)) if r.side=="YES" else (made<int(r.threshold))
         predictions.at[i,"result"]=made
         predictions.at[i,"correct"]=bool(success)
@@ -56,26 +59,33 @@ def settle_predictions(predictions, logs):
 
 def append_snapshot(predictions, forecasts, teams, prediction_date, now=None):
     """Append only once per date; never retroactively generate 'predictions'."""
-    if not teams or prediction_date in set(predictions["prediction_date"].dropna().astype(str)):
-        return predictions
+    if not teams:return predictions
     # Archive prospective 70%+ NO three-point thresholds for confidence-tier evaluation.
     picks=forecasts[forecasts["team"].isin(teams)].copy()
     picks=picks[(picks["games"]>=5) & (picks["projected_pa"]>=1.5) &
                 (picks["fair_no"]>=.70)].copy()
     if picks.empty:return predictions
+    picks["prop"]="3PT made"
     picks["side"]="NO"
     picks["probability"]=picks["fair_no"]
-    picks=picks.drop_duplicates(["player_id","threshold"]).sort_values(
+    picks=picks.drop_duplicates(["player_id","prop","threshold"]).sort_values(
         ["probability","games"],ascending=False)
     stamp=(now or dt.datetime.now(dt.timezone.utc)).isoformat()
     rows=[]
     for _,r in picks.iterrows():
         rows.append(dict(prediction_date=prediction_date,created_at_utc=stamp,
                          player_id=str(r.player_id),player=r.player,team=r.team,
-                         threshold=int(r.threshold),side=r.side,
+                         prop=str(r.prop),threshold=int(r.threshold),side=r.side,
                          probability=float(r.probability),game_id=pd.NA,
                          result=pd.NA,correct=pd.NA,settled_at_utc=pd.NA))
-    return pd.concat([predictions,pd.DataFrame(rows,columns=COLUMNS)],ignore_index=True)
+    return append_prop_rows(predictions,pd.DataFrame(rows,columns=COLUMNS))
+
+def append_prop_rows(predictions,rows):
+    """Idempotent prospective append by date/player/stat/threshold/side."""
+    if rows is None or rows.empty:return predictions
+    combined=pd.concat([predictions,rows],ignore_index=True)
+    return combined.drop_duplicates(["prediction_date","player_id","prop","threshold","side"],keep="first").reset_index(drop=True)
+
 
 def summarize(predictions):
     settled=predictions[predictions["correct"].notna()].copy()
