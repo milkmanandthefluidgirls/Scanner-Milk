@@ -291,6 +291,44 @@ if not settled.empty:
         st.caption("Difference (pp) = actual accuracy minus average predicted probability. Positive means outcomes exceeded forecasts.")
     else:
         st.info("No settled predictions with valid probabilities in this period.")
+    st.markdown("#### Inside the 90%+ tier")
+    st.caption("Breakdown of settled NO forecasts only. These are prediction hit rates, not Kalshi returns; multiple thresholds on the same player/game are correlated.")
+    high=tiered[tiered["probability"]>=.90].copy()
+    if not high.empty:
+        high["Confidence band"]=pd.cut(high["probability"],
+            bins=[.90,.95,.98,.995,1.0000001],
+            labels=["90–94.9%","95–97.9%","98–99.4%","99.5–100%"],
+            right=False,include_lowest=True)
+        def _confidence_breakdown(data,by):
+            result=data.groupby(by,observed=True).agg(
+                Correct=("correct_flag","sum"),Total=("correct_flag","size"),
+                Predicted=("probability","mean")).reset_index()
+            result["Misses"]=result["Total"]-result["Correct"]
+            result["Actual hit rate %"]=(result["Correct"]/result["Total"]*100).round(1)
+            result["Avg predicted %"]=(result["Predicted"]*100).round(1)
+            result["Calibration gap (pp)"]=(result["Actual hit rate %"]-result["Avg predicted %"]).round(1)
+            return result.drop(columns="Predicted")
+        bands=_confidence_breakdown(high,["Confidence band"])
+        st.dataframe(bands,hide_index=True,use_container_width=True)
+        st.caption("Calibration gap = actual hit rate minus predicted probability; positive is better than predicted. Compare the number of misses as well as accuracy.")
+        with st.expander("Where the 90%+ wins come from — thresholds and players"):
+            st.markdown("**By NO threshold (three-pointers made)**")
+            threshold_summary=_confidence_breakdown(high,["threshold"]).sort_values("Total",ascending=False)
+            st.dataframe(threshold_summary,hide_index=True,use_container_width=True)
+            st.markdown("**By player**")
+            player_summary=_confidence_breakdown(high,["player"]).sort_values(["Total","Correct"],ascending=False)
+            st.dataframe(player_summary,hide_index=True,use_container_width=True)
+            st.markdown("**By date**")
+            date_summary=_confidence_breakdown(high,["prediction_date"]).sort_values("prediction_date",ascending=False)
+            st.dataframe(date_summary,hide_index=True,use_container_width=True)
+            st.markdown("**Every miss at 90%+**")
+            misses=high[~high["correct_flag"]][["prediction_date","player","threshold","probability","result"]].copy()
+            misses["probability"]=(misses["probability"]*100).round(1)
+            st.dataframe(misses.sort_values("prediction_date",ascending=False),hide_index=True,use_container_width=True)
+        st.download_button("Download 90%+ prediction results",high.to_csv(index=False),
+            "milkball_90_plus_results.csv",key="download_high_confidence_results")
+    else:
+        st.info("No settled 90%+ NO predictions in this period.")
     st.caption("NO predictions are tracked only from the new cutoff; prior YES-model results remain archived.")
     if len(settled)<100:
         st.warning(f"Calibration sample is small ({len(settled)} settled predictions). Do not change model probabilities based on these results alone.")
