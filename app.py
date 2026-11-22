@@ -311,9 +311,11 @@ if not settled.empty:
         bands=_confidence_breakdown(high,["Confidence band"])
         st.dataframe(bands,hide_index=True,use_container_width=True)
         st.caption("Calibration gap = actual hit rate minus predicted probability; positive is better than predicted. Compare the number of misses as well as accuracy.")
+        st.markdown("**By player prop category**")
+        st.dataframe(_confidence_breakdown(high,["prop"]).sort_values("Total",ascending=False),hide_index=True,use_container_width=True)
         with st.expander("Where the 90%+ wins come from — thresholds and players"):
-            st.markdown("**By NO threshold (three-pointers made)**")
-            threshold_summary=_confidence_breakdown(high,["threshold"]).sort_values("Total",ascending=False)
+            st.markdown("**By stat category and NO threshold**")
+            threshold_summary=_confidence_breakdown(high,["prop","threshold"]).sort_values("Total",ascending=False)
             st.dataframe(threshold_summary,hide_index=True,use_container_width=True)
             st.markdown("**By player**")
             player_summary=_confidence_breakdown(high,["player"]).sort_values(["Total","Correct"],ascending=False)
@@ -322,7 +324,7 @@ if not settled.empty:
             date_summary=_confidence_breakdown(high,["prediction_date"]).sort_values("prediction_date",ascending=False)
             st.dataframe(date_summary,hide_index=True,use_container_width=True)
             st.markdown("**Every miss at 90%+**")
-            misses=high[~high["correct_flag"]][["prediction_date","player","threshold","probability","result"]].copy()
+            misses=high[~high["correct_flag"]][["prediction_date","player","prop","threshold","probability","result"]].copy()
             misses["probability"]=(misses["probability"]*100).round(1)
             st.dataframe(misses.sort_values("prediction_date",ascending=False),hide_index=True,use_container_width=True)
         st.download_button("Download 90%+ prediction results",high.to_csv(index=False),
@@ -336,7 +338,7 @@ if not settled.empty:
     st.dataframe(daily.sort_values("Date",ascending=False),hide_index=True,use_container_width=True)
     st.line_chart(daily.set_index("Date")["Accuracy"])
     with st.expander("Individual prediction results"):
-        view=settled[["prediction_date","player","side","threshold","probability","result","correct"]].copy()
+        view=settled[["prediction_date","player","prop","side","threshold","probability","result","correct"]].copy()
         view["probability"]=(view["probability"]*100).round(1)
         st.dataframe(view.sort_values("prediction_date",ascending=False),hide_index=True,use_container_width=True)
     st.download_button("Download tracked results",settled.to_csv(index=False),"scanner_milk_model_results.csv",key="track_download")
