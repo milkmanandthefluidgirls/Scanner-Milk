@@ -1,4 +1,4 @@
-name: Update current-season NBA three-point stats
+name: Update NBA multi-prop forecasts and results
 
 on:
   workflow_dispatch:
@@ -26,6 +26,8 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: pip install pandas requests
+      - name: Verify multi-prop tracking regression tests
+        run: python -m unittest test_multi_prop_tracking.py test_strategy_lab.py
       - name: Fetch missing completed 2026-27 regular-season boxscores
         id: collect
         continue-on-error: true
