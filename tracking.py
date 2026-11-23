@@ -43,12 +43,13 @@ def settle_predictions(predictions, logs):
     logs["GAME_DATE"]=pd.to_datetime(logs["GAME_DATE"]).dt.strftime("%Y-%m-%d")
     # A player with no completed boxscore is NOT graded as a loss or win.
     lookup=logs.drop_duplicates(["PLAYER_ID","GAME_DATE"]).set_index(["PLAYER_ID","GAME_DATE"])
+    available_stats=set(logs.columns)
     for i,r in predictions[predictions["result"].isna()].iterrows():
         key=(str(r.player_id),str(r.prediction_date))
         if key not in lookup.index:continue
         actual=lookup.loc[key]
         stat={"3PT made":"FG3M","PTS":"PTS","REB":"REB","AST":"AST","STL":"STL","BLK":"BLK"}.get(str(r.prop))
-        if not stat or stat not in actual.index or pd.isna(actual[stat]):continue
+        if not stat or stat not in available_stats or stat not in actual.index or pd.isna(actual[stat]):continue
         made=int(actual[stat])
         success=(made>=int(r.threshold)) if r.side=="YES" else (made<int(r.threshold))
         predictions.at[i,"result"]=made
