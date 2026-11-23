@@ -58,7 +58,7 @@ def forecast_props(logs,min_games=8):
                 rows.append(dict(player=str(last.PLAYER_NAME),
                     team=str(last.TEAM_ABBREVIATION),player_id=str(pid),
                     prop=stat,threshold=threshold,selection="NO",
-                    model_no_pct=round(no_probability(mu,v,threshold)*100,1),
+                    model_no_pct=round(no_probability(mu,v,threshold)*100,8),
                     season_no_pct=round(float((season<threshold).mean())*100,1),
                     last5_no_pct=round(float((last5<threshold).mean())*100,1),
                     games=len(g),projected_mean=round(mu,2),
