@@ -249,6 +249,24 @@ settled=tracked[tracked["correct"].notna()].copy()
 
 # Show all saved prop categories, including those still awaiting completed games.
 st.markdown("#### Player prop category coverage")
+# Historical coverage starts when each stat's prospective snapshots were first saved.
+# Do not backfill earlier predictions from today's model: that would leak outcomes.
+if not tracked.empty:
+    _first_saved=tracked.groupby("prop")["prediction_date"].min().to_dict()
+    _non3=[p for p in ("PTS","REB","AST","STL","BLK") if p in _first_saved]
+    if _non3:
+        _first_non3=min(str(_first_saved[p]) for p in _non3)
+        st.warning(
+            f"Tracking coverage gap: the saved results history contains no non-3PT NO "
+            f"snapshots before {_first_non3}. Earlier on-screen picks were not recorded "
+            "as prospective results. They cannot be reconstructed reliably after tipoff."
+        )
+    _pending_dates=tracked.loc[tracked["correct"].isna(),"prediction_date"].astype(str)
+    _stale=_pending_dates[_pending_dates<pd.Timestamp.now(tz="America/New_York").date().isoformat()]
+    if not _stale.empty:
+        st.warning(f"{len(_stale):,} predictions from previous dates are still unsettled. "
+                   "The scheduled boxscore settlement job or player-game matching needs review.")
+
 _category_status=tracked.copy()
 if not _category_status.empty:
     _category_status["prop"]=_category_status["prop"].fillna("3PT made")
