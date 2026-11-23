@@ -348,6 +348,58 @@ else:
         st.caption(f"{int(tracked['correct'].isna().sum())} predictions are awaiting completed player boxscores.")
 st.caption("Tracking starts with saved prospective predictions; it does not backfill hypothetical historical picks. Missing player boxscores remain ungraded.")
 
+# Independent-opportunity research is read-only and cannot submit orders.
+st.subheader("High-Probability Strategy Lab")
+st.caption("Separate from live order P/L. Overlapping NO thresholds are correlated; this lab reports both raw forecasts and representative player-game opportunities.")
+from strategy_lab import prepare as _lab_prepare, breakdown as _lab_breakdown, representative as _lab_rep, independent as _lab_independent, clusters as _lab_clusters, simulate as _lab_simulate
+_lab_all=_lab_prepare(tracked)
+if _lab_all.empty:
+    st.info("No settled NO predictions to analyze.")
+else:
+    with st.expander("Filters and independent-opportunity diagnostics",expanded=True):
+        _la,_lb=st.columns(2)
+        _min_conf=_la.slider("Minimum confidence (%)",50,100,90,key="lab_min_conf")
+        _lab_props=sorted(_lab_all["prop"].dropna().unique().tolist())
+        _selected_props=_lb.multiselect("Prop categories",_lab_props,default=_lab_props,key="lab_props")
+        _date_min=pd.to_datetime(_lab_all["prediction_date"]).min().date()
+        _date_max=pd.to_datetime(_lab_all["prediction_date"]).max().date()
+        _range=st.date_input("Prediction date range",value=(_date_min,_date_max),key="lab_dates")
+        _thresholds=sorted(pd.to_numeric(_lab_all["threshold"],errors="coerce").dropna().unique().tolist())
+        _selected_thresholds=st.multiselect("Thresholds",_thresholds,default=_thresholds,key="lab_thresholds")
+        _lab=_lab_all[(_lab_all["probability"]>=_min_conf/100)&
+            _lab_all["prop"].isin(_selected_props)&
+            _lab_all["threshold"].isin(_selected_thresholds)].copy()
+        if isinstance(_range,(tuple,list)) and len(_range)==2:
+            _lab=_lab[_lab["prediction_date"].between(str(_range[0]),str(_range[1]))]
+        if _lab.empty:
+            st.info("No settled forecasts match these filters.")
+        else:
+            _reps=_lab_rep(_lab)
+            _ind=_lab_independent(_lab)
+            _a,_b,_c=st.columns(3)
+            _a.metric("Threshold predictions",len(_lab))
+            _b.metric("Player-prop games",len(_reps))
+            _c.metric("Unique player-games",len(_ind))
+            st.caption("Representative per player-game/prop: lowest NO threshold. One-per-player-game: lowest predicted confidence, then prop and threshold. Both rules ignore the result; changing filters changes the eligible population.")
+            st.markdown("**Independent player-game accuracy**")
+            st.dataframe(_lab_breakdown(_ind,["band"]),hide_index=True,use_container_width=True)
+            st.markdown("**All threshold predictions — by threshold**")
+            st.dataframe(_lab_breakdown(_lab,["prop","threshold"]),hide_index=True,use_container_width=True)
+            st.markdown("**By confidence band and prop**")
+            st.dataframe(_lab_breakdown(_lab,["band","prop"]),hide_index=True,use_container_width=True)
+            st.markdown("**Outcome clustering**")
+            st.dataframe(_lab_clusters(_lab),hide_index=True,use_container_width=True)
+            st.caption("Clusters are descriptive, not independent confidence intervals. Multiple players in the same NBA game can share injuries, pace and game-script risk.")
+            st.download_button("Download representative player-game predictions",_ind.to_csv(index=False),
+                "milkball_independent_player_games.csv",key="lab_download_independent")
+    with st.expander("Profitability backtest — singles only (no live orders)",expanded=False):
+        st.caption("Requires historical timestamped executable Kalshi NO asks, tipoff times, and verified fees. Current market prices cannot be used as historical entry prices.")
+        _bt,_message=_lab_simulate(_lab_all,None)
+        st.info(_message)
+        st.caption("Until those inputs are available, ROI, drawdown and profitability by price band are unavailable—not zero. Actual submitted-order P/L remains in the separate Milkball order profitability section above.")
+        st.caption("Proposed research limits: 0.5% bankroll risk per independent position; avoid stacking player thresholds, and cap total game exposure. No strategy auto-execution is enabled.")
+
+
 with no_picks_slot:
     st.subheader("Milkball NO Model Picks")
     st.caption("NBA player props · NO only · Current-season forecasts · Uncalibrated research probabilities")
