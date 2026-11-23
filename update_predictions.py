@@ -45,7 +45,8 @@ def main():
     today=dt.datetime.now(ZoneInfo("America/New_York")).date().isoformat()
     prop_path=Path("data/nba_2026_27_player_props.csv")
     prop_logs=pd.read_csv(prop_path,dtype={"PLAYER_ID":str,"GAME_ID":str}) if prop_path.exists() else pd.DataFrame()
-    predictions=settle_predictions(load_predictions(),logs)
+    predictions=load_predictions()
+    predictions=settle_predictions(predictions,logs)
     if not prop_logs.empty:
         predictions=settle_predictions(predictions,prop_logs)
     # No same-day completed games enter today's pregame forecast.
@@ -71,5 +72,21 @@ def main():
     PREDICTIONS.parent.mkdir(parents=True,exist_ok=True)
     predictions.to_csv(PREDICTIONS,index=False)
     print(f"Predictions: {len(predictions)}, settled: {predictions['correct'].notna().sum()}")
+    # Report category coverage and overdue pending counts for CI audit.
+    no=predictions[predictions["side"].astype(str).str.upper()=="NO"].copy()
+    if not no.empty:
+        no["pending"]=no["correct"].isna()
+        print("NO tracking by category:")
+        print(no.groupby("prop",dropna=False).agg(
+            saved=("prop","size"),pending=("pending","sum")).to_string())
+        prior=no[(no["prediction_date"].astype(str)<today)&no["pending"]]
+        if not prior.empty:
+            print(f"WARNING: {len(prior)} older NO predictions remain unsettled; check player boxscore coverage and DNPs.")
+    if teams and not prop_logs.empty:
+        today_no=no[no["prediction_date"].astype(str)==today]
+        missing=set(("3PT made","PTS","REB","AST","STL","BLK"))-set(today_no["prop"].dropna())
+        if missing:
+            print("WARNING: No qualifying prospective snapshots for categories:",sorted(missing))
+
 
 if __name__=="__main__":main()
