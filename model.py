@@ -69,7 +69,7 @@ def player_forecasts(logs,min_games=5,prior_attempts=70,prior_pct=.36):
                 hit_rate=round(float((g.FG3M>=threshold).mean()),3),
                 last5_hit_rate=round(float((recent.FG3M>=threshold).mean()),3),
                 last5_games=len(recent),
-                fair_yes=round(fair,4),fair_no=round(1-fair,4),
+                fair_yes=round(fair,10),fair_no=round(1-fair,10),
                 model=MODEL_NAME))
     return pd.DataFrame(out)
 
