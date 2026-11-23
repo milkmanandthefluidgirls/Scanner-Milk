@@ -246,6 +246,28 @@ tracked=load_predictions()
 tracked=tracked[(tracked["side"].astype(str).str.upper()=="NO") &
                 (tracked["prediction_date"].astype(str)>=no_tracking_start.isoformat())].copy()
 settled=tracked[tracked["correct"].notna()].copy()
+
+# Show all saved prop categories, including those still awaiting completed games.
+st.markdown("#### Player prop category coverage")
+_category_status=tracked.copy()
+if not _category_status.empty:
+    _category_status["prop"]=_category_status["prop"].fillna("3PT made")
+    _category_status["settled_flag"]=_category_status["correct"].notna()
+    _category_status["won_flag"]=_category_status["correct"].astype(str).str.lower().eq("true")
+    _category_status["probability"]=pd.to_numeric(_category_status["probability"],errors="coerce")
+    _coverage=_category_status.groupby("prop",observed=True).agg(
+        Saved=("prop","size"),Settled=("settled_flag","sum"),
+        Wins=("won_flag","sum")).reset_index().rename(columns={"prop":"Prop category"})
+    _coverage["Pending"]=_coverage["Saved"]-_coverage["Settled"]
+    _coverage["Settled accuracy %"]=(_coverage["Wins"]/_coverage["Settled"].replace(0,float("nan"))*100).round(2)
+    _coverage["Settled accuracy %"]=_coverage["Settled accuracy %"].astype(object).where(
+        _coverage["Settled"]>0,"Awaiting results")
+    st.dataframe(_coverage[["Prop category","Saved","Settled","Pending","Wins","Settled accuracy %"]],
+        hide_index=True,use_container_width=True)
+    st.caption("All six supported NO categories are shown, even before their first result settles. Pending predictions are never counted as wins or losses.")
+else:
+    st.info("No saved NO predictions for the selected tracking period.")
+
 period=st.selectbox("Results period",["Last 7 days","Last 30 days","This season","Custom dates"],index=1,key="tracking_period")
 if period=="Custom dates":
     d1,d2=st.columns(2)
@@ -354,12 +376,12 @@ st.caption("Separate from live order P/L. Overlapping NO thresholds are correlat
 from strategy_lab import prepare as _lab_prepare, breakdown as _lab_breakdown, representative as _lab_rep, independent as _lab_independent, clusters as _lab_clusters, simulate as _lab_simulate
 _lab_all=_lab_prepare(tracked)
 if _lab_all.empty:
-    st.info("No settled NO predictions to analyze.")
+    st.info("No settled NO predictions yet. The category coverage table above includes pending predictions.")
 else:
     with st.expander("Filters and independent-opportunity diagnostics",expanded=True):
         _la,_lb=st.columns(2)
         _min_conf=_la.slider("Minimum confidence (%)",50,100,90,key="lab_min_conf")
-        _lab_props=sorted(_lab_all["prop"].dropna().unique().tolist())
+        _lab_props=["3PT made","PTS","REB","AST","STL","BLK"]
         _selected_props=_lb.multiselect("Prop categories",_lab_props,default=_lab_props,key="lab_props")
         _date_min=pd.to_datetime(_lab_all["prediction_date"]).min().date()
         _date_max=pd.to_datetime(_lab_all["prediction_date"]).max().date()
