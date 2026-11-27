@@ -1,8 +1,8 @@
 {
   "season": "2026-27",
   "season_type": "regular",
-  "last_checked": "2026-11-26",
-  "through_date": "2026-11-25",
+  "last_checked": "2026-11-27",
+  "through_date": "2026-11-26",
   "completed_game_ids": [
     "401909088",
     "401909089",
@@ -278,8 +278,8 @@
   "games_discovered": 270,
   "games_stored": 270,
   "player_game_rows": 6035,
-  "scoreboard_days_success": 56,
-  "scoreboard_days_total": 56,
+  "scoreboard_days_success": 57,
+  "scoreboard_days_total": 57,
   "failures": [],
   "complete": true
 }
